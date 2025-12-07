@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS card (
     current_quantity INTEGER DEFAULT 0,   -- Total cards available on market
     current_sellers INTEGER DEFAULT 0,    -- Number of unique sellers
     listings_updated_at DATETIME,         -- When listings were last scraped
+    listing_verified_at DATETIME,         -- When listings were verified via UI scraping
     in_collection INTEGER DEFAULT 0,      -- 1 if in user's personal collection/watchlist
     tcg_url TEXT NOT NULL,                -- Full TCGplayer URL
     created_at DATETIME DEFAULT (datetime('now')),

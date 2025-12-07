@@ -33,6 +33,7 @@ import { updateListings } from './jobs/updateListings.js';
 import { updateListingsQuick } from './jobs/updateListingsQuick.js';
 import { scrapeTopCards, scrapeOneSet } from './jobs/scrapeTopCards.js';
 import { fixCardNames } from './jobs/fixCardNames.js';
+import { verifyDeals } from './jobs/verifyDeals.js';
 import { ProductMode, ONE_PIECE_SETS, MAIN_BOOSTER_SETS } from './config.js';
 
 const USER_DATA_DIR = join(process.cwd(), '.browser-data');
@@ -488,6 +489,29 @@ program
         console.log(`   ${deal.tcg_url}`);
         console.log('');
       }
+    } finally {
+      closeDb();
+    }
+  });
+
+program
+  .command('verify-deals')
+  .description('Verify potential deals using UI scraping (bypasses API cache)')
+  .option('-m, --min-sales <number>', 'Minimum 7-day sales', '3')
+  .option('-d, --discount <number>', 'Minimum discount percentage', '10')
+  .option('-l, --limit <number>', 'Max deals to verify')
+  .option('--visible', 'Run browser in visible mode')
+  .action(async (options) => {
+    try {
+      await verifyDeals({
+        minSales: parseInt(options.minSales, 10),
+        minDiscount: parseInt(options.discount, 10),
+        limit: options.limit ? parseInt(options.limit, 10) : undefined,
+        headless: !options.visible,
+      });
+    } catch (error) {
+      console.error('Failed to verify deals:', error);
+      process.exit(1);
     } finally {
       closeDb();
     }

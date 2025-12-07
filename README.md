@@ -7,6 +7,7 @@ A personal tool to track prices, sales, and listings for One Piece TCG products 
 - **Product Discovery**: Scrapes top cards from each One Piece set (sorted by price)
 - **Sales Tracking**: Fetches recent sales history via API
 - **Listings Tracking**: Monitors current English Near Mint listings with market stats
+- **Hybrid Verification**: Fast API refresh + UI scraping to verify actual deals (bypasses stale cache)
 - **Smart Filtering**: Filters out Japanese/Korean listings, tracks only $5+ cards
 - **Web Dashboard**: Visual interface to browse cards, see deals, and view by set
 - **SQLite Storage**: Simple local database for all data
@@ -166,6 +167,12 @@ npm run dev card-sales 628353
 
 # Find potential deals
 npm run dev deals
+
+# Verify deals with UI scraping (accurate prices)
+npm run dev verify-deals -- --visible
+
+# Verify deals with custom thresholds
+npm run dev verify-deals -- --min-sales 5 --discount 15 --visible
 ```
 
 ### Login (Manual)
@@ -200,6 +207,45 @@ npm run dev refresh-listings -- --visible
 
 # Update recent sales
 npm run dev update-sales -- --visible
+```
+
+### Hybrid Approach: Best of Both Worlds 🚀
+
+The API is fast but sometimes has stale cached data. UI scraping is accurate but slow. Use **both**:
+
+```bash
+# 1. Fast API refresh for all cards (~3 products/sec)
+npm run dev refresh-listings
+
+# 2. Find potential deals
+npm run dev deals
+
+# 3. Verify deals with UI scraping (bypasses API cache)
+npm run dev verify-deals -- --visible
+
+# Optional: Only verify top deals
+npm run dev verify-deals -- --limit 5 --visible
+```
+
+**Why this works:**
+- ✅ Fast bulk updates via API for the majority of cards
+- ✅ Accurate UI scraping for the deals that actually matter
+- ✅ `verify-deals` marks which listings have been verified
+- ✅ Now you know which deals are real vs. stale data
+
+**Example Output:**
+```
+[1/5] 🔍 Shanks (Championship 2024) [Two Legends]
+   Expected: Market $199.99 → Avg $92.05 (54.0% below)
+       Found 8 English Near Mint listings
+       Lowest: $199.99
+   ❌ NOT A DEAL: $199.99 (0.0% ABOVE market)
+
+[2/5] 🔍 Luffy (SP) [Romance Dawn]
+   Expected: Market $85.00 → Avg $68.50 (19.4% below)
+       Found 12 English Near Mint listings
+       Lowest: $68.00
+   ✅ VERIFIED DEAL: $68.00 (20.0% below market)
 ```
 
 ## Configuration

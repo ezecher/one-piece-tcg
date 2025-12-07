@@ -499,6 +499,7 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
             result.lowestPrice,
             result.lowestWithShipping || result.lowestPrice,
             result.listingCount,
+            false, // not verified (API data)
             result.currentQuantity,
             result.currentSellers
           );

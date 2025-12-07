@@ -188,10 +188,14 @@ export function updateCardListings(
   lowestPrice: number | null,
   lowestPriceWithShipping: number | null,
   listingCount: number,
+  verified?: boolean,
   currentQuantity?: number,
   currentSellers?: number
 ): void {
   const database = getDb();
+  
+  // If verified=true, also update listing_verified_at timestamp
+  const verifiedClause = verified ? ', listing_verified_at = datetime(\'now\')' : '';
   
   const stmt = database.prepare(`
     UPDATE card SET
@@ -202,6 +206,7 @@ export function updateCardListings(
       current_sellers = ?,
       listings_updated_at = datetime('now'),
       updated_at = datetime('now')
+      ${verifiedClause}
     WHERE product_id = ?
   `);
   

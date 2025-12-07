@@ -426,7 +426,7 @@ export async function scrapeListingsViaApi(
       
       // Skip non-Near Mint
       const condition = item.condition || '';
-      if (!isNearMint(condition)) continue;
+      if (!isNearMintOrUnopened(condition)) continue;
       
       const price = item.price || 0;
       if (price <= 0) continue;
