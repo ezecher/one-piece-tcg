@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>One Piece TCG Sales Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-card: #12121a;
+      --bg-card-hover: #1a1a25;
+      --border: #2a2a3a;
+      --text-primary: #f0f0f5;
+      --text-secondary: #8888a0;
+      --accent-red: #ff4757;
+      --accent-green: #2ed573;
+      --accent-blue: #3742fa;
+      --accent-gold: #ffa502;
+      --accent-purple: #a855f7;
+      --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      --gradient-3: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      min-height: 100vh;
+      background-image: 
+        radial-gradient(ellipse at top left, rgba(102, 126, 234, 0.1) 0%, transparent 50%),
+        radial-gradient(ellipse at bottom right, rgba(167, 139, 250, 0.08) 0%, transparent 50%);
+    }
+
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .logo-icon {
+      width: 48px;
+      height: 48px;
+      background: var(--gradient-1);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #fff 0%, #a78bfa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+
+    .refresh-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .refresh-btn:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--accent-purple);
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--gradient-1);
+    }
+
+    .stat-card.green::before { background: var(--accent-green); }
+    .stat-card.gold::before { background: var(--accent-gold); }
+    .stat-card.purple::before { background: var(--accent-purple); }
+    .stat-card.red::before { background: var(--accent-red); }
+
+    .stat-label {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
+    }
+
+    .tab {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      padding: 0.75rem 1.25rem;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 500;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .tab:hover {
+      color: var(--text-primary);
+      background: var(--bg-card);
+    }
+
+    .tab.active {
+      color: var(--text-primary);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+    }
+
+    /* Cards Table */
+    .table-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 1rem 1.5rem;
+      background: rgba(0,0,0,0.3);
+      color: var(--text-secondary);
+      font-weight: 500;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.2s;
+    }
+
+    th.sortable:hover {
+      color: var(--text-primary);
+    }
+
+    th.sortable::after {
+      content: ' ↕';
+      opacity: 0.3;
+    }
+
+    th.sortable.asc::after {
+      content: ' ↑';
+      opacity: 1;
+      color: var(--accent-purple);
+    }
+
+    th.sortable.desc::after {
+      content: ' ↓';
+      opacity: 1;
+      color: var(--accent-purple);
+    }
+
+    td {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+
+    tr:hover td {
+      background: var(--bg-card-hover);
+    }
+
+    .card-name {
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .card-name-text {
+      max-width: 280px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .card-set {
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+    }
+
+    .price {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+
+    .price.positive { color: var(--accent-green); }
+    .price.negative { color: var(--accent-red); }
+
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .badge.sealed { background: rgba(255, 165, 2, 0.2); color: var(--accent-gold); }
+    .badge.single { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+
+    .sales-count {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-secondary);
+    }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.8);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 90%;
+      max-width: 800px;
+      max-height: 80vh;
+      overflow: auto;
+    }
+
+    .modal-header {
+      padding: 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+
+    .modal-body {
+      padding: 1.5rem;
+    }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-secondary);
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent-purple);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Empty state */
+    .empty {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-secondary);
+    }
+
+    .clickable {
+      cursor: pointer;
+    }
+
+    .clickable:hover .card-name {
+      color: var(--accent-purple);
+    }
+    
+    .clickable:hover {
+      background: var(--bg-card-hover);
+    }
+    
+    .set-back-btn:hover {
+      border-color: var(--accent-purple) !important;
+    }
+    
+    .tcg-link {
+      color: var(--accent-purple);
+      text-decoration: none;
+      font-size: 0.9rem;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      background: rgba(167, 139, 250, 0.15);
+      opacity: 0.8;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    
+    .tcg-link:hover {
+      opacity: 1;
+      color: #fff;
+      background: var(--accent-purple);
+    }
+    
+    .collection-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 1rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      line-height: 1;
+    }
+    
+    .collection-btn:hover {
+      background: rgba(255, 165, 2, 0.1);
+      border-color: var(--accent-gold);
+      color: var(--accent-gold);
+    }
+    
+    .collection-btn.in-collection {
+      background: rgba(255, 165, 2, 0.15);
+      border-color: var(--accent-gold);
+      color: var(--accent-gold);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <div class="logo-icon">🏴‍☠️</div>
+        <div>
+          <h1>One Piece TCG Sales</h1>
+          <div class="subtitle">Track prices and find deals</div>
+        </div>
+      </div>
+      <button class="refresh-btn" onclick="loadData()">↻ Refresh</button>
+    </header>
+
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Cards Tracked</div>
+        <div class="stat-value" id="stat-cards">--</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">Sales Recorded</div>
+        <div class="stat-value" id="stat-sales">--</div>
+      </div>
+      <div class="stat-card gold">
+        <div class="stat-label">Market Value</div>
+        <div class="stat-value" id="stat-value">--</div>
+      </div>
+      <div class="stat-card purple">
+        <div class="stat-label">Last Sale Value</div>
+        <div class="stat-value" id="stat-sale-value">--</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-label">Deals (Under Last Sale)</div>
+        <div class="stat-value" id="stat-deals">--</div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="cards">All Cards</button>
+      <button class="tab" data-tab="collection">📦 My Collection</button>
+      <button class="tab" data-tab="stats">Price Stats</button>
+      <button class="tab" data-tab="deals">🔥 Deals</button>
+      <button class="tab" data-tab="sets">By Set</button>
+    </div>
+
+    <div class="table-container">
+      <div id="content">
+        <div class="loading">
+          <div class="spinner"></div>
+          Loading data...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sales Modal -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="modal-title">Sales History</div>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <script>
+    let currentTab = 'cards';
+    let cardsData = [];
+    let statsData = [];
+    let dealsData = [];
+    let setsData = [];
+    let collectionData = { cards: [], count: 0, totalValue: 0 };
+    
+    // Sorting state
+    let sortColumn = 'market_price';
+    let sortDirection = 'desc';
+    
+    // Set filter (null = show all)
+    let selectedSet = null;
+
+    // Format currency
+    function formatPrice(num) {
+      if (num == null) return 'N/A';
+      return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // Load all data
+    async function loadData() {
+      try {
+        // Load summary
+        const summary = await fetch('/api/summary').then(r => r.json());
+        document.getElementById('stat-cards').textContent = summary.cards.toLocaleString();
+        document.getElementById('stat-sales').textContent = summary.sales.toLocaleString();
+
+        // Load cards
+        cardsData = await fetch('/api/cards').then(r => r.json());
+        
+        // Calculate market value (TCGplayer's price)
+        const totalMarketValue = cardsData.reduce((sum, c) => sum + (c.market_price || 0), 0);
+        document.getElementById('stat-value').textContent = formatPrice(totalMarketValue);
+        
+        // Calculate last sale value (more accurate real-world value)
+        const totalSaleValue = cardsData.reduce((sum, c) => sum + (c.last_sale_price || c.market_price || 0), 0);
+        document.getElementById('stat-sale-value').textContent = formatPrice(totalSaleValue);
+
+        // Load stats
+        statsData = await fetch('/api/stats').then(r => r.json());
+
+        // Calculate deals - listings under last sale price (the real deal indicator!)
+        dealsData = cardsData.filter(c => {
+          const lastSale = c.last_sale_price;
+          const lowestListing = c.lowest_listing;
+          // A deal is when lowest listing is below last sale price by at least 5%
+          return lastSale && lowestListing && lowestListing < lastSale * 0.95;
+        }).map(c => ({
+          ...c,
+          discount_pct: Math.round((1 - c.lowest_listing / c.last_sale_price) * 100)
+        })).filter(c => c.discount_pct <= 40) // Filter out suspicious "too good to be true" deals (likely stale API data)
+        .sort((a, b) => b.discount_pct - a.discount_pct);
+        
+        document.getElementById('stat-deals').textContent = dealsData.length;
+
+        // Load sets
+        setsData = await fetch('/api/sets').then(r => r.json());
+
+        // Load collection
+        collectionData = await fetch('/api/collection').then(r => r.json());
+
+        renderContent();
+      } catch (error) {
+        console.error('Error loading data:', error);
+        document.getElementById('content').innerHTML = `
+          <div class="empty">Error loading data. Make sure the server is running.</div>
+        `;
+      }
+    }
+
+    // Render content based on active tab
+    function renderContent() {
+      const content = document.getElementById('content');
+
+      switch (currentTab) {
+        case 'cards':
+          renderCards(content);
+          break;
+        case 'collection':
+          renderCollection(content);
+          break;
+        case 'stats':
+          renderStats(content);
+          break;
+        case 'deals':
+          renderDeals(content);
+          break;
+        case 'sets':
+          renderSets(content);
+          break;
+      }
+    }
+
+    function renderCards(container) {
+      if (cardsData.length === 0) {
+        container.innerHTML = '<div class="empty">No cards tracked yet. Run the scraper first!</div>';
+        return;
+      }
+
+      // Filter by set if selected
+      const filteredCards = selectedSet 
+        ? cardsData.filter(c => c.set_name === selectedSet)
+        : cardsData;
+
+      // Sort data
+      const sorted = [...filteredCards].sort((a, b) => {
+        let aVal, bVal;
+        
+        switch (sortColumn) {
+          case 'name':
+            aVal = (a.name || '').toLowerCase();
+            bVal = (b.name || '').toLowerCase();
+            break;
+          case 'set_name':
+            aVal = (a.set_name || '').toLowerCase();
+            bVal = (b.set_name || '').toLowerCase();
+            break;
+          case 'product_type':
+            aVal = a.product_type || '';
+            bVal = b.product_type || '';
+            break;
+          case 'market_price':
+            aVal = a.market_price || 0;
+            bVal = b.market_price || 0;
+            break;
+          case 'last_sale_price':
+            aVal = a.last_sale_price || 0;
+            bVal = b.last_sale_price || 0;
+            break;
+          case 'last_sale_date':
+            aVal = a.last_sale_date ? new Date(a.last_sale_date).getTime() : 0;
+            bVal = b.last_sale_date ? new Date(b.last_sale_date).getTime() : 0;
+            break;
+          case 'lowest_listing':
+            aVal = a.lowest_listing || 0;
+            bVal = b.lowest_listing || 0;
+            break;
+          case 'listing_count':
+            aVal = a.listing_count || 0;
+            bVal = b.listing_count || 0;
+            break;
+          case 'current_quantity':
+            aVal = a.current_quantity || 0;
+            bVal = b.current_quantity || 0;
+            break;
+          case 'current_sellers':
+            aVal = a.current_sellers || 0;
+            bVal = b.current_sellers || 0;
+            break;
+          default:
+            aVal = a.market_price || 0;
+            bVal = b.market_price || 0;
+        }
+        
+        if (typeof aVal === 'string') {
+          return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        }
+        return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      });
+
+      const sortClass = (col) => sortColumn === col ? sortDirection : '';
+
+      // Set header with back button when filtered
+      const setHeader = selectedSet ? `
+        <div style="padding: 1rem 1.5rem; background: rgba(167, 139, 250, 0.1); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span style="color: var(--text-secondary);">Viewing:</span>
+            <span style="font-weight: 600; color: var(--accent-purple); margin-left: 0.5rem;">${escapeHtml(selectedSet)}</span>
+            <span style="color: var(--text-secondary); margin-left: 0.5rem;">(${sorted.length} cards)</span>
+          </div>
+          <button onclick="clearSetFilter()" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">← All Cards</button>
+        </div>
+      ` : '';
+
+      container.innerHTML = setHeader + `
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 40px;"></th>
+              <th class="sortable ${sortClass('name')}" onclick="sortBy('name')">Card</th>
+              <th class="sortable ${sortClass('set_name')}" onclick="sortBy('set_name')">Set</th>
+              <th class="sortable ${sortClass('product_type')}" onclick="sortBy('product_type')">Type</th>
+              <th class="sortable ${sortClass('market_price')}" onclick="sortBy('market_price')">Market</th>
+              <th class="sortable ${sortClass('last_sale_price')}" onclick="sortBy('last_sale_price')">Last Sale</th>
+              <th class="sortable ${sortClass('last_sale_date')}" onclick="sortBy('last_sale_date')">Sale Date</th>
+              <th class="sortable ${sortClass('lowest_listing')}" onclick="sortBy('lowest_listing')">Lowest</th>
+              <th class="sortable ${sortClass('listing_count')}" onclick="sortBy('listing_count')">NM Listings</th>
+              <th class="sortable ${sortClass('current_quantity')}" onclick="sortBy('current_quantity')">Qty Avail</th>
+              <th class="sortable ${sortClass('current_sellers')}" onclick="sortBy('current_sellers')">Sellers</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sorted.map(card => {
+              const hasListing = card.lowest_listing != null;
+              const hasLastSale = card.last_sale_price != null;
+              // Highlight green if listing is below last sale price (the real deal!)
+              const isDeal = hasListing && hasLastSale && card.lowest_listing < card.last_sale_price * 0.95;
+              const listingClass = isDeal ? 'positive' : '';
+              const saleDate = card.last_sale_date ? new Date(card.last_sale_date).toLocaleDateString() : '—';
+              const inCollection = card.in_collection ? 'in-collection' : '';
+              return `
+              <tr class="clickable" onclick="showSales(${card.product_id}, '${escapeHtml(card.name)}')">
+                <td>
+                  <button onclick="toggleCollection(${card.product_id}, event)" class="collection-btn ${inCollection}" title="${card.in_collection ? 'Remove from collection' : 'Add to collection'}">
+                    ${card.in_collection ? '⭐' : '☆'}
+                  </button>
+                </td>
+                <td>
+                  <div class="card-name">
+                    <span class="card-name-text">${escapeHtml(card.name)}</span>
+                    <a href="${card.tcg_url}" target="_blank" onclick="event.stopPropagation()" class="tcg-link" title="View on TCGplayer">↗</a>
+                  </div>
+                </td>
+                <td class="card-set">${escapeHtml(card.set_name || 'Unknown')}</td>
+                <td><span class="badge ${card.product_type}">${card.product_type}</span></td>
+                <td class="price">${formatPrice(card.market_price)}</td>
+                <td class="price">${hasLastSale ? formatPrice(card.last_sale_price) : '—'}</td>
+                <td class="sales-count">${saleDate}</td>
+                <td class="price ${listingClass}">
+                  ${hasListing ? formatPrice(card.lowest_listing) : '—'}
+                  ${isDeal ? '<span style="color: var(--accent-green); font-size: 0.7rem; margin-left: 0.25rem;">🔥</span>' : ''}
+                </td>
+                <td class="sales-count">${card.listing_count || 0}</td>
+                <td class="sales-count">${card.current_quantity || 0}</td>
+                <td class="sales-count">${card.current_sellers || 0}</td>
+              </tr>
+            `}).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+    
+    // Handle column sorting
+    function sortBy(column) {
+      if (sortColumn === column) {
+        // Toggle direction
+        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortColumn = column;
+        // Default to desc for prices, asc for names
+        sortDirection = ['name', 'set_name', 'product_type'].includes(column) ? 'asc' : 'desc';
+      }
+      renderContent();
+    }
+
+    function renderStats(container) {
+      if (statsData.length === 0) {
+        container.innerHTML = '<div class="empty">No sales data yet. Run the sales update first!</div>';
+        return;
+      }
+
+      const withSales = statsData.filter(s => s.sales_count_7d > 0);
+
+      container.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Card</th>
+              <th>Market</th>
+              <th>7d Avg</th>
+              <th>7d Sales</th>
+              <th>30d Avg</th>
+              <th>Diff</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${withSales.map(stat => {
+              const diff = stat.market_price && stat.avg_price_7d 
+                ? ((stat.avg_price_7d - stat.market_price) / stat.market_price * 100).toFixed(1)
+                : null;
+              const diffClass = diff > 0 ? 'positive' : diff < 0 ? 'negative' : '';
+              return `
+                <tr class="clickable" onclick="showSales(${stat.product_id}, '${escapeHtml(stat.name)}')">
+                  <td>
+                    <div class="card-name">${escapeHtml(stat.name)}</div>
+                    <div class="card-set">${escapeHtml(stat.set_name || '')}</div>
+                  </td>
+                  <td class="price">${formatPrice(stat.market_price)}</td>
+                  <td class="price">${formatPrice(stat.avg_price_7d)}</td>
+                  <td class="sales-count">${stat.sales_count_7d}</td>
+                  <td class="price">${formatPrice(stat.avg_price_30d)}</td>
+                  <td class="price ${diffClass}">${diff ? diff + '%' : 'N/A'}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderDeals(container) {
+      if (dealsData.length === 0) {
+        container.innerHTML = '<div class="empty">No deals found. Cards with listings below last sale price will appear here.</div>';
+        return;
+      }
+
+      container.innerHTML = `
+        <div style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+          <span style="color: var(--accent-green);">💡</span>
+          <span style="color: var(--text-secondary); margin-left: 0.5rem;">Deals are cards where the lowest listing is at least 5% below the last sale price</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>Card</th>
+              <th>Last Sale</th>
+              <th>Lowest Listing</th>
+              <th>Discount</th>
+              <th>Savings</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${dealsData.map(deal => {
+              const savings = deal.last_sale_price - deal.lowest_listing;
+              return `
+              <tr class="clickable" onclick="showSales(${deal.product_id}, '${escapeHtml(deal.name)}')">
+                <td>
+                  <button onclick="toggleCollection(${deal.product_id}, event)" class="collection-btn ${deal.in_collection ? 'in-collection' : ''}" title="${deal.in_collection ? 'Remove from collection' : 'Add to collection'}">
+                    ${deal.in_collection ? '⭐' : '☆'}
+                  </button>
+                </td>
+                <td>
+                  <div class="card-name">
+                    <span>🔥 ${escapeHtml(deal.name)}</span>
+                    <a href="${deal.tcg_url}" target="_blank" onclick="event.stopPropagation()" class="tcg-link" title="View on TCGplayer">↗</a>
+                  </div>
+                  <div class="card-set">${escapeHtml(deal.set_name || '')}</div>
+                </td>
+                <td class="price">${formatPrice(deal.last_sale_price)}</td>
+                <td class="price positive">${formatPrice(deal.lowest_listing)}</td>
+                <td class="price positive">${deal.discount_pct}% below</td>
+                <td class="price positive">Save ${formatPrice(savings)}</td>
+              </tr>
+            `}).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderSets(container) {
+      if (setsData.length === 0) {
+        container.innerHTML = '<div class="empty">No sets data.</div>';
+        return;
+      }
+
+      // Calculate last sale values per set from cardsData
+      const setLastSaleValues = {};
+      cardsData.forEach(card => {
+        const setName = card.set_name || 'Unknown';
+        if (!setLastSaleValues[setName]) {
+          setLastSaleValues[setName] = 0;
+        }
+        setLastSaleValues[setName] += (card.last_sale_price || card.market_price || 0);
+      });
+
+      container.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Set Name</th>
+              <th>Cards</th>
+              <th>Market Value</th>
+              <th>Last Sale Value</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${setsData.map(set => {
+              const lastSaleValue = setLastSaleValues[set.name] || 0;
+              return `
+              <tr class="clickable" onclick="selectSet('${escapeHtml(set.name).replace(/'/g, "\\'")}')">
+                <td class="card-name" style="color: var(--accent-purple);">${escapeHtml(set.name)}</td>
+                <td class="sales-count">${set.count}</td>
+                <td class="price" style="color: var(--accent-gold);">${formatPrice(set.totalMarketValue)}</td>
+                <td class="price" style="color: var(--accent-purple);">${formatPrice(lastSaleValue)}</td>
+                <td style="color: var(--text-secondary); font-size: 0.8rem;">View →</td>
+              </tr>
+            `}).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+    
+    // Select a set and show its cards
+    function selectSet(setName) {
+      selectedSet = setName;
+      currentTab = 'cards';
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelector('[data-tab="cards"]').classList.add('active');
+      renderContent();
+    }
+    
+    // Clear set filter
+    function clearSetFilter() {
+      selectedSet = null;
+      renderContent();
+    }
+
+    // Render collection
+    function renderCollection(container) {
+      if (collectionData.cards.length === 0) {
+        container.innerHTML = `
+          <div class="empty">
+            <p style="margin-bottom: 1rem;">📦 Your collection is empty!</p>
+            <p style="color: var(--text-secondary); font-size: 0.9rem;">
+              Click the ⭐ button next to any card to add it to your collection.
+            </p>
+          </div>
+        `;
+        return;
+      }
+
+      // Calculate both values
+      const marketValue = collectionData.cards.reduce((sum, c) => sum + (c.market_price || 0), 0);
+      const lastSaleValue = collectionData.cards.reduce((sum, c) => sum + (c.last_sale_price || c.market_price || 0), 0);
+
+      container.innerHTML = `
+        <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; padding: 1rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+          <div>
+            <span style="color: var(--text-secondary);">Collection:</span>
+            <span style="font-weight: 600; color: var(--accent-gold); margin-left: 0.5rem;">${collectionData.count} items</span>
+          </div>
+          <div>
+            <span style="color: var(--text-secondary);">Market Value:</span>
+            <span style="font-weight: 600; color: var(--accent-gold); margin-left: 0.5rem;">${formatPrice(marketValue)}</span>
+          </div>
+          <div>
+            <span style="color: var(--text-secondary);">Last Sale Value:</span>
+            <span style="font-weight: 600; color: var(--accent-purple); margin-left: 0.5rem;">${formatPrice(lastSaleValue)}</span>
+            <span style="color: var(--text-secondary); font-size: 0.8rem; margin-left: 0.25rem;">(more accurate)</span>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>Name</th>
+              <th>Set</th>
+              <th>Type</th>
+              <th>Market</th>
+              <th>Lowest Listing</th>
+              <th>Last Sale</th>
+              <th>Qty Avail</th>
+              <th>Sellers</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${collectionData.cards.map(card => `
+              <tr>
+                <td>
+                  <button onclick="toggleCollection(${card.product_id}, event)" class="collection-btn in-collection" title="Remove from collection">⭐</button>
+                </td>
+                <td>
+                  <div class="card-name-container">
+                    <div class="card-name">${escapeHtml(card.name)}</div>
+                    <a href="${card.tcg_url}" target="_blank" class="card-link-icon" title="View on TCGplayer">↗</a>
+                  </div>
+                </td>
+                <td class="set-name">${escapeHtml(card.set_name || 'N/A')}</td>
+                <td><span class="badge ${card.product_type}">${card.product_type}</span></td>
+                <td class="price">${formatPrice(card.market_price)}</td>
+                <td class="price" style="color: ${card.lowest_listing && card.last_sale_price && card.lowest_listing < card.last_sale_price ? 'var(--accent-green)' : 'inherit'}">
+                  ${card.lowest_listing ? formatPrice(card.lowest_listing) : '-'}
+                  ${card.listing_count ? '<span style="color: var(--text-secondary); font-size: 0.75rem;"> (' + card.listing_count + ')</span>' : ''}
+                  ${card.lowest_listing && card.last_sale_price && card.lowest_listing < card.last_sale_price * 0.95 ? '<span style="color: var(--accent-green); font-size: 0.7rem; display: block;">🔥 DEAL</span>' : ''}
+                </td>
+                <td>
+                  ${card.last_sale_price ? `
+                    <span class="price">${formatPrice(card.last_sale_price)}</span>
+                    <span style="color: var(--text-secondary); font-size: 0.75rem; display: block;">${new Date(card.last_sale_date).toLocaleDateString()}</span>
+                  ` : '-'}
+                </td>
+                <td>${card.current_quantity || 0}</td>
+                <td>${card.current_sellers || 0}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    // Toggle collection
+    async function toggleCollection(productId, event) {
+      event.stopPropagation();
+      const btn = event.target;
+      const isInCollection = btn.classList.contains('in-collection');
+      
+      try {
+        if (isInCollection) {
+          await fetch(`/api/collection/${productId}`, { method: 'DELETE' });
+          btn.classList.remove('in-collection');
+          btn.textContent = '☆';
+          btn.title = 'Add to collection';
+        } else {
+          await fetch(`/api/collection/${productId}`, { method: 'POST' });
+          btn.classList.add('in-collection');
+          btn.textContent = '⭐';
+          btn.title = 'Remove from collection';
+        }
+        
+        // Update local data
+        const card = cardsData.find(c => c.product_id === productId);
+        if (card) {
+          card.in_collection = isInCollection ? 0 : 1;
+        }
+        
+        // Reload collection data
+        collectionData = await fetch('/api/collection').then(r => r.json());
+        
+        // Re-render if on collection tab
+        if (currentTab === 'collection') {
+          renderContent();
+        }
+      } catch (error) {
+        console.error('Error toggling collection:', error);
+      }
+    }
+
+    // Show sales modal
+    async function showSales(productId, cardName) {
+      document.getElementById('modal-title').textContent = cardName;
+      document.getElementById('modal-body').innerHTML = '<div class="loading"><div class="spinner"></div>Loading sales...</div>';
+      document.getElementById('modal').classList.add('active');
+
+      try {
+        const sales = await fetch(`/api/sales/${productId}`).then(r => r.json());
+        
+        if (sales.length === 0) {
+          document.getElementById('modal-body').innerHTML = '<div class="empty">No sales data for this card.</div>';
+          return;
+        }
+
+        document.getElementById('modal-body').innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Price</th>
+                <th>Condition</th>
+                <th>Qty</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sales.map(sale => `
+                <tr>
+                  <td>${new Date(sale.sold_at).toLocaleDateString()}</td>
+                  <td class="price">${formatPrice(sale.price)}</td>
+                  <td>${escapeHtml(sale.condition || 'N/A')}</td>
+                  <td>${sale.quantity}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        document.getElementById('modal-body').innerHTML = '<div class="empty">Error loading sales data.</div>';
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.remove('active');
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentTab = tab.dataset.tab;
+        renderContent();
+      });
+    });
+
+    // Close modal on overlay click
+    document.getElementById('modal').addEventListener('click', (e) => {
+      if (e.target.id === 'modal') closeModal();
+    });
+
+    // Close modal on escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
+
+    // Load data on page load
+    loadData();
+  </script>
+</body>
+</html>
+

@@ -1,0 +1,42 @@
+{
+  "name": "tcg-onepiece-sales",
+  "version": "1.0.0",
+  "description": "Personal tool to aggregate One Piece TCGplayer sales data",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "dashboard": "tsx src/server/index.ts",
+    "update-products": "tsx src/index.ts update-products",
+    "update-products:singles": "tsx src/index.ts update-products --mode singles",
+    "update-products:sealed": "tsx src/index.ts update-products --mode sealed",
+    "update-sales": "tsx src/index.ts update-sales",
+    "db:init": "tsx src/db/init.ts",
+    "query": "tsx src/index.ts query"
+  },
+  "keywords": [
+    "tcgplayer",
+    "one-piece",
+    "scraper",
+    "sales"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^11.6.0",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "playwright": "^1.49.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
