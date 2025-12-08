@@ -723,37 +723,67 @@ export function getTopVolume24h(limit = 20): Array<{ card_id: number; name: stri
 // ============ Collection/Watchlist Operations ============
 
 /**
- * Add a card to the collection by product ID
+ * Add a card to the collection by product ID (or increase quantity)
+ * @param quantity - Number to add (default 1)
  */
-export function addToCollection(productId: number): boolean {
+export function addToCollection(productId: number, quantity: number = 1): boolean {
   const database = getDb();
   const result = database.prepare(`
-    UPDATE card SET in_collection = 1, updated_at = datetime('now')
+    UPDATE card SET 
+      in_collection = in_collection + ?,
+      updated_at = datetime('now')
     WHERE product_id = ?
-  `).run(productId);
+  `).run(quantity, productId);
   return result.changes > 0;
 }
 
 /**
- * Remove a card from the collection by product ID
+ * Set exact quantity in collection
  */
-export function removeFromCollection(productId: number): boolean {
+export function setCollectionQuantity(productId: number, quantity: number): boolean {
   const database = getDb();
   const result = database.prepare(`
-    UPDATE card SET in_collection = 0, updated_at = datetime('now')
+    UPDATE card SET 
+      in_collection = ?,
+      updated_at = datetime('now')
     WHERE product_id = ?
-  `).run(productId);
+  `).run(Math.max(0, quantity), productId);
   return result.changes > 0;
 }
 
 /**
- * Toggle a card's collection status
+ * Remove a card from the collection by product ID (or decrease quantity)
+ * @param quantity - Number to remove (default: all)
+ */
+export function removeFromCollection(productId: number, quantity?: number): boolean {
+  const database = getDb();
+  if (quantity === undefined) {
+    // Remove all
+    const result = database.prepare(`
+      UPDATE card SET in_collection = 0, updated_at = datetime('now')
+      WHERE product_id = ?
+    `).run(productId);
+    return result.changes > 0;
+  } else {
+    // Decrease quantity (min 0)
+    const result = database.prepare(`
+      UPDATE card SET 
+        in_collection = MAX(0, in_collection - ?),
+        updated_at = datetime('now')
+      WHERE product_id = ?
+    `).run(quantity, productId);
+    return result.changes > 0;
+  }
+}
+
+/**
+ * Toggle a card's collection status (add 1 or remove all)
  */
 export function toggleCollection(productId: number): boolean {
   const database = getDb();
   const result = database.prepare(`
     UPDATE card SET 
-      in_collection = CASE WHEN in_collection = 1 THEN 0 ELSE 1 END,
+      in_collection = CASE WHEN in_collection > 0 THEN 0 ELSE 1 END,
       updated_at = datetime('now')
     WHERE product_id = ?
   `).run(productId);
@@ -761,7 +791,7 @@ export function toggleCollection(productId: number): boolean {
 }
 
 /**
- * Get all cards in the collection
+ * Get all cards in the collection (with quantity > 0)
  */
 export function getCollectionCards(): CardWithLastSale[] {
   const database = getDb();
@@ -772,18 +802,47 @@ export function getCollectionCards(): CardWithLastSale[] {
       (SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) as last_sale_price,
       (SELECT condition FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) as last_sale_condition
     FROM card c
-    WHERE c.in_collection = 1
+    WHERE c.in_collection > 0
     ORDER BY c.market_price DESC NULLS LAST
   `).all() as CardWithLastSale[];
 }
 
 /**
- * Get collection count
+ * Get total collection value
+ */
+export function getCollectionValue(): { totalItems: number; totalValue: number; marketValue: number } {
+  const database = getDb();
+  const result = database.prepare(`
+    SELECT 
+      SUM(in_collection) as total_items,
+      SUM(in_collection * COALESCE(lowest_listing, market_price, 0)) as total_value,
+      SUM(in_collection * COALESCE(market_price, 0)) as market_value
+    FROM card
+    WHERE in_collection > 0
+  `).get() as { total_items: number; total_value: number; market_value: number };
+  return {
+    totalItems: result.total_items || 0,
+    totalValue: result.total_value || 0,
+    marketValue: result.market_value || 0,
+  };
+}
+
+/**
+ * Get collection count (unique items)
  */
 export function getCollectionCount(): number {
   const database = getDb();
-  const result = database.prepare('SELECT COUNT(*) as count FROM card WHERE in_collection = 1').get() as { count: number };
+  const result = database.prepare('SELECT COUNT(*) as count FROM card WHERE in_collection > 0').get() as { count: number };
   return result.count;
+}
+
+/**
+ * Get total quantity in collection
+ */
+export function getCollectionTotalQuantity(): number {
+  const database = getDb();
+  const result = database.prepare('SELECT SUM(in_collection) as total FROM card WHERE in_collection > 0').get() as { total: number };
+  return result.total || 0;
 }
 
 /**

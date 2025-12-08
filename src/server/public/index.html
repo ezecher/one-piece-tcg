@@ -422,6 +422,27 @@
       border-color: var(--accent-gold);
       color: var(--accent-gold);
     }
+    
+    .qty-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    
+    .qty-btn:hover {
+      background: var(--accent-purple);
+      border-color: var(--accent-purple);
+      color: white;
+    }
   </style>
 </head>
 <body>
@@ -958,45 +979,61 @@
         return;
       }
 
-      // Calculate both values
-      const marketValue = collectionData.cards.reduce((sum, c) => sum + (c.market_price || 0), 0);
-      const lastSaleValue = collectionData.cards.reduce((sum, c) => sum + (c.last_sale_price || c.market_price || 0), 0);
+      // Calculate values with quantities
+      const totalItems = collectionData.cards.reduce((sum, c) => sum + (c.in_collection || 1), 0);
+      const marketValue = collectionData.cards.reduce((sum, c) => sum + ((c.market_price || 0) * (c.in_collection || 1)), 0);
+      const listingValue = collectionData.cards.reduce((sum, c) => sum + ((c.lowest_listing || c.market_price || 0) * (c.in_collection || 1)), 0);
+      const lastSaleValue = collectionData.cards.reduce((sum, c) => sum + ((c.last_sale_price || c.market_price || 0) * (c.in_collection || 1)), 0);
 
       container.innerHTML = `
         <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; padding: 1rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
           <div>
-            <span style="color: var(--text-secondary);">Collection:</span>
-            <span style="font-weight: 600; color: var(--accent-gold); margin-left: 0.5rem;">${collectionData.count} items</span>
+            <span style="color: var(--text-secondary);">Items:</span>
+            <span style="font-weight: 600; color: var(--accent-gold); margin-left: 0.5rem;">${totalItems} (${collectionData.count} unique)</span>
           </div>
           <div>
             <span style="color: var(--text-secondary);">Market Value:</span>
             <span style="font-weight: 600; color: var(--accent-gold); margin-left: 0.5rem;">${formatPrice(marketValue)}</span>
           </div>
           <div>
+            <span style="color: var(--text-secondary);">Listing Value:</span>
+            <span style="font-weight: 600; color: var(--accent-green); margin-left: 0.5rem;">${formatPrice(listingValue)}</span>
+          </div>
+          <div>
             <span style="color: var(--text-secondary);">Last Sale Value:</span>
             <span style="font-weight: 600; color: var(--accent-purple); margin-left: 0.5rem;">${formatPrice(lastSaleValue)}</span>
-            <span style="color: var(--text-secondary); font-size: 0.8rem; margin-left: 0.25rem;">(more accurate)</span>
           </div>
         </div>
         <table>
           <thead>
             <tr>
               <th></th>
+              <th>Qty</th>
               <th>Name</th>
               <th>Set</th>
               <th>Type</th>
-              <th>Market</th>
-              <th>Lowest Listing</th>
+              <th>Unit Price</th>
+              <th>Total Value</th>
               <th>Last Sale</th>
-              <th>Qty Avail</th>
-              <th>Sellers</th>
             </tr>
           </thead>
           <tbody>
-            ${collectionData.cards.map(card => `
+            ${collectionData.cards.map(card => {
+              const qty = card.in_collection || 1;
+              const unitPrice = card.lowest_listing || card.market_price || 0;
+              const totalValue = unitPrice * qty;
+              return `
               <tr>
                 <td>
-                  <button onclick="toggleCollection(${card.product_id}, event)" class="collection-btn in-collection" title="Remove from collection">⭐</button>
+                  <button onclick="removeFromCollection(${card.product_id}, event)" class="collection-btn in-collection" title="Remove from collection">⭐</button>
+                </td>
+                <td>
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <button onclick="updateQty(${card.product_id}, ${qty - 1}, event)" class="qty-btn" title="Decrease">−</button>
+                    <input type="number" value="${qty}" min="0" style="width: 40px; text-align: center; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary); padding: 2px 4px;" 
+                      onchange="updateQty(${card.product_id}, parseInt(this.value) || 0, event)" />
+                    <button onclick="updateQty(${card.product_id}, ${qty + 1}, event)" class="qty-btn" title="Increase">+</button>
+                  </div>
                 </td>
                 <td>
                   <div class="card-name-container">
@@ -1006,25 +1043,52 @@
                 </td>
                 <td class="set-name">${escapeHtml(card.set_name || 'N/A')}</td>
                 <td><span class="badge ${card.product_type}">${card.product_type}</span></td>
-                <td class="price">${formatPrice(card.market_price)}</td>
-                <td class="price" style="color: ${card.lowest_listing && card.last_sale_price && card.lowest_listing < card.last_sale_price ? 'var(--accent-green)' : 'inherit'}">
-                  ${card.lowest_listing ? formatPrice(card.lowest_listing) : '-'}
-                  ${card.listing_count ? '<span style="color: var(--text-secondary); font-size: 0.75rem;"> (' + card.listing_count + ')</span>' : ''}
-                  ${card.lowest_listing && card.last_sale_price && card.lowest_listing < card.last_sale_price * 0.95 ? '<span style="color: var(--accent-green); font-size: 0.7rem; display: block;">🔥 DEAL</span>' : ''}
-                </td>
+                <td class="price">${formatPrice(unitPrice)}</td>
+                <td class="price" style="color: var(--accent-gold); font-weight: 600;">${formatPrice(totalValue)}</td>
                 <td>
                   ${card.last_sale_price ? `
                     <span class="price">${formatPrice(card.last_sale_price)}</span>
                     <span style="color: var(--text-secondary); font-size: 0.75rem; display: block;">${new Date(card.last_sale_date).toLocaleDateString()}</span>
                   ` : '-'}
                 </td>
-                <td>${card.current_quantity || 0}</td>
-                <td>${card.current_sellers || 0}</td>
               </tr>
-            `).join('')}
+            `}).join('')}
           </tbody>
         </table>
       `;
+    }
+    
+    // Update quantity in collection
+    async function updateQty(productId, quantity, event) {
+      event.stopPropagation();
+      try {
+        await fetch(`/api/collection/${productId}`, { 
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ quantity })
+        });
+        // Refresh collection data
+        await loadCollection();
+        if (document.querySelector('.tab.active')?.dataset.tab === 'collection') {
+          renderCollection(document.querySelector('.content'));
+        }
+      } catch (error) {
+        console.error('Failed to update quantity:', error);
+      }
+    }
+    
+    // Remove from collection (set qty to 0)
+    async function removeFromCollection(productId, event) {
+      event.stopPropagation();
+      try {
+        await fetch(`/api/collection/${productId}`, { method: 'DELETE' });
+        await loadCollection();
+        if (document.querySelector('.tab.active')?.dataset.tab === 'collection') {
+          renderCollection(document.querySelector('.content'));
+        }
+      } catch (error) {
+        console.error('Failed to remove from collection:', error);
+      }
     }
 
     // Toggle collection
