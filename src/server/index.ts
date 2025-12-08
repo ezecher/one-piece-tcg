@@ -21,10 +21,8 @@ import {
   countSales,
   getCollectionCards,
   getCollectionCount,
-  getCollectionValue,
   addToCollection,
   removeFromCollection,
-  setCollectionQuantity,
   Card,
 } from '../db/client.js';
 
@@ -160,30 +158,13 @@ app.get('/api/collection', (req, res) => {
   }
 });
 
-// Add to collection (increments by 1 or specified quantity)
+// Add to collection
 app.post('/api/collection/:productId', (req, res) => {
   try {
     const productId = parseInt(req.params.productId);
-    const quantity = req.body?.quantity || 1;
-    const success = addToCollection(productId, quantity);
+    const success = addToCollection(productId);
     if (success) {
-      res.json({ success: true, message: `Added ${quantity} to collection` });
-    } else {
-      res.status(404).json({ success: false, message: 'Card not found' });
-    }
-  } catch (error) {
-    res.status(500).json({ error: String(error) });
-  }
-});
-
-// Set exact quantity in collection
-app.put('/api/collection/:productId', (req, res) => {
-  try {
-    const productId = parseInt(req.params.productId);
-    const quantity = req.body?.quantity ?? 0;
-    const success = setCollectionQuantity(productId, quantity);
-    if (success) {
-      res.json({ success: true, message: `Set quantity to ${quantity}` });
+      res.json({ success: true, message: 'Added to collection' });
     } else {
       res.status(404).json({ success: false, message: 'Card not found' });
     }
@@ -202,16 +183,6 @@ app.delete('/api/collection/:productId', (req, res) => {
     } else {
       res.status(404).json({ success: false, message: 'Card not found' });
     }
-  } catch (error) {
-    res.status(500).json({ error: String(error) });
-  }
-});
-
-// Get collection value summary
-app.get('/api/collection/value', (req, res) => {
-  try {
-    const value = getCollectionValue();
-    res.json(value);
   } catch (error) {
     res.status(500).json({ error: String(error) });
   }
