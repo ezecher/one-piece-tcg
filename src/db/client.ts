@@ -556,6 +556,22 @@ export function getPotentialDeals(minSales = 3, maxPctOfMarket = 90): DealCandid
 }
 
 /**
+ * Get last sale price for a product
+ */
+export function getLastSalePrice(productId: number): number | null {
+  const database = getDb();
+  const result = database.prepare(`
+    SELECT se.price 
+    FROM sale_event se
+    JOIN card c ON se.card_id = c.id
+    WHERE c.product_id = ?
+    ORDER BY se.sold_at DESC
+    LIMIT 1
+  `).get(productId) as { price: number } | undefined;
+  return result?.price ?? null;
+}
+
+/**
  * Get deals where lowest listing is below last sale price
  * This matches what the dashboard shows as "Deals"
  */
@@ -592,6 +608,11 @@ export function getDealsUnderLastSale(minDiscountPct = 5): ListingDeal[] {
     WHERE c.lowest_listing IS NOT NULL
       AND (SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) IS NOT NULL
       AND c.lowest_listing < (SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) * (1 - ? / 100.0)
+      -- Exclude cards that have EVER been flagged as having stale API prices
+      AND NOT EXISTS (
+        SELECT 1 FROM suspicious_listing sl 
+        WHERE sl.product_id = c.product_id
+      )
     ORDER BY discount_pct DESC
   `).all(minDiscountPct) as ListingDeal[];
 }
@@ -626,6 +647,23 @@ export function isSuspiciousPrice(productId: number, price: number): boolean {
       AND ABS(api_price - ?) < 0.01
   `).get(productId, price) as { count: number };
   return result.count > 0;
+}
+
+/**
+ * Get the cached verified price for a known-bad API price
+ * Returns the verified_price if this exact API price was already flagged as stale
+ * Returns null if we haven't seen this price before
+ */
+export function getCachedVerifiedPrice(productId: number, apiPrice: number): number | null {
+  const database = getDb();
+  const result = database.prepare(`
+    SELECT verified_price FROM suspicious_listing
+    WHERE product_id = ?
+      AND ABS(api_price - ?) < 0.01
+    ORDER BY verified_at DESC
+    LIMIT 1
+  `).get(productId, apiPrice) as { verified_price: number } | undefined;
+  return result?.verified_price ?? null;
 }
 
 /**

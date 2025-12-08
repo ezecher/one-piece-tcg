@@ -16,6 +16,9 @@ import {
   initializeDb,
   updateCardListings,
   isSuspiciousPrice,
+  getCachedVerifiedPrice,
+  getLastSalePrice,
+  recordSuspiciousListing,
   Card,
 } from '../db/client.js';
 
@@ -430,23 +433,53 @@ async function fetchListingsViaUI(
   }
 }
 
+interface ProcessCardResult {
+  updated: boolean;
+  apiSuccess: boolean;
+  uiFallback: boolean;
+  usedCache: boolean;
+  needsVerification: boolean;  // True if this looks like a new deal that should be verified
+  result: ListingResult | null;
+}
+
 /**
  * Process a single card and return results
+ * If API returns a known-bad price, uses cached verified price instead
  */
 async function processCard(
   page: Page,
   card: Card,
-  useApi: boolean
-): Promise<{ updated: boolean; apiSuccess: boolean; uiFallback: boolean; result: ListingResult | null }> {
+  useApi: boolean,
+  minDealPct: number = 5  // If price is this % below last sale, flag for verification
+): Promise<ProcessCardResult> {
   try {
     let result: ListingResult;
     let apiSuccess = false;
     let uiFallback = false;
+    let usedCache = false;
+    let needsVerification = false;
     
     if (useApi) {
       result = await fetchListingsViaApi(page, card.product_id, card.name, card.product_type);
       if (result.listingCount > 0) {
         apiSuccess = true;
+        
+        // Check if this API price is known to be stale
+        if (result.lowestPrice !== null) {
+          const cachedPrice = getCachedVerifiedPrice(card.product_id, result.lowestPrice);
+          if (cachedPrice !== null) {
+            // We've seen this exact stale price before - use the cached verified price
+            result.lowestPrice = cachedPrice;
+            result.lowestWithShipping = cachedPrice;
+            usedCache = true;
+          } else {
+            // Check if this looks like a deal that needs verification
+            const lastSale = getLastSalePrice(card.product_id);
+            if (lastSale !== null && result.lowestPrice < lastSale * (1 - minDealPct / 100)) {
+              needsVerification = true;
+            }
+          }
+        }
       } else {
         result = await fetchListingsViaUI(page, card.tcg_url);
         if (result.listingCount > 0) uiFallback = true;
@@ -456,8 +489,6 @@ async function processCard(
     }
     
     if (result.lowestPrice !== null || result.currentQuantity > 0) {
-      const suspicious = result.lowestPrice !== null && isSuspiciousPrice(card.product_id, result.lowestPrice);
-      
       updateCardListings(
         card.product_id,
         result.lowestPrice,
@@ -467,12 +498,12 @@ async function processCard(
         result.currentSellers
       );
       
-      return { updated: true, apiSuccess, uiFallback, result };
+      return { updated: true, apiSuccess, uiFallback, usedCache, needsVerification, result };
     }
     
-    return { updated: false, apiSuccess, uiFallback, result: null };
+    return { updated: false, apiSuccess: false, uiFallback: false, usedCache: false, needsVerification: false, result: null };
   } catch {
-    return { updated: false, apiSuccess: false, uiFallback: false, result: null };
+    return { updated: false, apiSuccess: false, uiFallback: false, usedCache: false, needsVerification: false, result: null };
   }
 }
 
@@ -540,7 +571,54 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
     let totalErrors = 0;
     let apiSuccesses = 0;
     let uiFallbacks = 0;
+    let cachedPrices = 0;
     let processed = 0;
+    
+    // Queue for cards that need real-time verification
+    const verifyQueue: { card: Card; apiPrice: number; lastSale: number }[] = [];
+    let verifiedCount = 0;
+    let verifiedFake = 0;
+    
+    // Verifier function - runs in parallel with main scraper
+    async function verifyDeal(verifyPage: Page, card: Card, apiPrice: number, lastSale: number) {
+      try {
+        const uiResult = await fetchListingsViaUI(verifyPage, card.tcg_url);
+        const verifiedPrice = uiResult.lowestPrice;
+        
+        if (verifiedPrice !== null) {
+          // Calculate if it's still a deal
+          const discountClaimed = ((lastSale - apiPrice) / lastSale) * 100;
+          const discountActual = ((lastSale - verifiedPrice) / lastSale) * 100;
+          
+          if (Math.abs(apiPrice - verifiedPrice) > 0.50) {
+            // API was wrong - record this and update with correct price
+            recordSuspiciousListing(
+              card.product_id,
+              apiPrice,
+              verifiedPrice,
+              lastSale,
+              discountClaimed,
+              discountActual
+            );
+            
+            // Update DB with verified price
+            updateCardListings(
+              card.product_id,
+              verifiedPrice,
+              verifiedPrice,
+              uiResult.listingCount,
+              uiResult.currentQuantity,
+              uiResult.currentSellers
+            );
+            
+            verifiedFake++;
+          }
+        }
+        verifiedCount++;
+      } catch {
+        // Verification failed, leave API price as-is
+      }
+    }
     
     if (numWorkers === 1) {
       // Single worker - original behavior with detailed output
@@ -553,10 +631,20 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
         const res = await processCard(page, card, useApi);
         
         if (res.updated && res.result) {
-          const suspicious = res.result.lowestPrice !== null && isSuspiciousPrice(card.product_id, res.result.lowestPrice);
-          const susFlag = suspicious ? ' ⚠️ SUS' : '';
+          let flag = '';
+          if (res.usedCache) {
+            flag = ' 📦 CACHED';
+            cachedPrices++;
+          } else if (res.needsVerification && res.result.lowestPrice !== null) {
+            const lastSale = getLastSalePrice(card.product_id);
+            if (lastSale) {
+              verifyQueue.push({ card, apiPrice: res.result.lowestPrice, lastSale });
+              flag = ' 🔍 QUEUED';
+            }
+          }
+          
           if (res.result.lowestPrice !== null) {
-            console.log(` $${res.result.lowestPrice.toFixed(2)} (${res.result.listingCount} NM)${susFlag}`);
+            console.log(` $${res.result.lowestPrice.toFixed(2)} (${res.result.listingCount} NM)${flag}`);
           } else {
             console.log(` no NM`);
           }
@@ -573,37 +661,86 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
           await page.waitForTimeout(useApi ? 150 : REQUEST_DELAY_MS);
         }
       }
+      
+      // Now verify queued deals
+      if (verifyQueue.length > 0) {
+        console.log(`\n🔍 Verifying ${verifyQueue.length} potential deals...`);
+        for (let i = 0; i < verifyQueue.length; i++) {
+          const { card, apiPrice, lastSale } = verifyQueue[i];
+          process.stdout.write(`\r  Verifying ${i + 1}/${verifyQueue.length}: ${card.name.substring(0, 30)}...   `);
+          await verifyDeal(page, card, apiPrice, lastSale);
+          await page.waitForTimeout(REQUEST_DELAY_MS);
+        }
+        console.log('');
+      }
     } else {
-      // Parallel workers - progress bar output
+      // Parallel workers - progress bar output + real-time verification
       const pages: Page[] = [];
       for (let i = 0; i < numWorkers; i++) {
         pages.push(await context.newPage());
       }
       
+      // Reserve last page for verification
+      const verifyPage = pages[pages.length - 1];
+      const scraperPages = numWorkers > 2 ? pages.slice(0, -1) : pages;
+      
+      // Start verification worker in background
+      let verifyRunning = true;
+      const verifyWorker = (async () => {
+        while (verifyRunning || verifyQueue.length > 0) {
+          if (verifyQueue.length > 0) {
+            const item = verifyQueue.shift()!;
+            await verifyDeal(verifyPage, item.card, item.apiPrice, item.lastSale);
+            await verifyPage.waitForTimeout(500);
+          } else {
+            await new Promise(r => setTimeout(r, 100));
+          }
+        }
+      })();
+      
       // Process cards in parallel batches
-      for (let i = 0; i < cards.length; i += numWorkers) {
-        const batch = cards.slice(i, Math.min(i + numWorkers, cards.length));
+      for (let i = 0; i < cards.length; i += scraperPages.length) {
+        const batch = cards.slice(i, Math.min(i + scraperPages.length, cards.length));
         
         const results = await Promise.all(
-          batch.map((card, idx) => processCard(pages[idx], card, useApi))
+          batch.map((card, idx) => processCard(scraperPages[idx], card, useApi))
         );
         
-        for (const res of results) {
+        for (let j = 0; j < results.length; j++) {
+          const res = results[j];
+          const card = batch[j];
           processed++;
           if (res.updated) totalUpdated++;
           if (res.apiSuccess) apiSuccesses++;
           if (res.uiFallback) uiFallbacks++;
+          if (res.usedCache) cachedPrices++;
           if (!res.updated && !res.apiSuccess && !res.uiFallback) totalErrors++;
+          
+          // Queue for verification if needed
+          if (res.needsVerification && res.result?.lowestPrice !== null) {
+            const lastSale = getLastSalePrice(card.product_id);
+            if (lastSale) {
+              verifyQueue.push({ card, apiPrice: res.result.lowestPrice, lastSale });
+            }
+          }
         }
         
         const pct = Math.round((processed / cards.length) * 100);
-        process.stdout.write(`\r⏳ Progress: ${pct}% (${processed}/${cards.length}) | Updated: ${totalUpdated}   `);
+        const verifyStatus = verifyQueue.length > 0 ? ` | 🔍 Queue: ${verifyQueue.length}` : '';
+        process.stdout.write(`\r⏳ Progress: ${pct}% (${processed}/${cards.length}) | Updated: ${totalUpdated}${verifyStatus}   `);
         
-        if (i + numWorkers < cards.length) {
-          await pages[0].waitForTimeout(useApi ? 100 : REQUEST_DELAY_MS);
+        if (i + scraperPages.length < cards.length) {
+          await scraperPages[0].waitForTimeout(useApi ? 100 : REQUEST_DELAY_MS);
         }
       }
-      console.log(''); // New line after progress
+      
+      // Wait for verification to complete
+      verifyRunning = false;
+      if (verifyQueue.length > 0 || verifiedCount > 0) {
+        console.log(`\n🔍 Finishing verification... (${verifyQueue.length} remaining)`);
+      }
+      await verifyWorker;
+      console.log('');
     }
     
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -615,6 +752,12 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
     if (useApi) {
       console.log(`API successes: ${apiSuccesses}`);
       console.log(`UI fallbacks: ${uiFallbacks}`);
+      if (cachedPrices > 0) {
+        console.log(`📦 Used cached verified prices: ${cachedPrices}`);
+      }
+    }
+    if (verifiedCount > 0) {
+      console.log(`🔍 Deals verified: ${verifiedCount} (${verifiedFake} were fake)`);
     }
     console.log(`Time: ${elapsed}s (${(cards.length / parseFloat(elapsed)).toFixed(1)} products/sec)`);
     
@@ -623,4 +766,5 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
     console.log('\nBrowser closed.');
   }
 }
+
 
