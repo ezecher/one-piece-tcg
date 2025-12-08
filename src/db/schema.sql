@@ -16,7 +16,6 @@ CREATE TABLE IF NOT EXISTS card (
     current_quantity INTEGER DEFAULT 0,   -- Total cards available on market
     current_sellers INTEGER DEFAULT 0,    -- Number of unique sellers
     listings_updated_at DATETIME,         -- When listings were last scraped
-    listing_verified_at DATETIME,         -- When listings were verified via UI scraping
     in_collection INTEGER DEFAULT 0,      -- 1 if in user's personal collection/watchlist
     tcg_url TEXT NOT NULL,                -- Full TCGplayer URL
     created_at DATETIME DEFAULT (datetime('now')),
@@ -52,6 +51,22 @@ CREATE INDEX IF NOT EXISTS idx_sale_sold_at ON sale_event(sold_at);
 CREATE INDEX IF NOT EXISTS idx_sale_price ON sale_event(price);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sale_unique 
     ON sale_event(card_id, sold_at, price, quantity, condition);
+
+-- Suspicious listings: track when API returns stale/wrong data
+CREATE TABLE IF NOT EXISTS suspicious_listing (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL,
+    api_price REAL NOT NULL,              -- What the API reported
+    verified_price REAL NOT NULL,         -- What UI scraping found
+    last_sale_price REAL,                 -- Last sale at time of verification
+    discount_claimed REAL,                -- % discount API claimed
+    discount_actual REAL,                 -- % discount actually found
+    verified_at DATETIME DEFAULT (datetime('now')),
+    
+    FOREIGN KEY (product_id) REFERENCES card(product_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_suspicious_product_id ON suspicious_listing(product_id);
 
 -- Scrape run table: for debugging and tracking
 CREATE TABLE IF NOT EXISTS scrape_run (

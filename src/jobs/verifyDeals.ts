@@ -1,29 +1,30 @@
 /**
  * Verify Deals Job
  * 
- * Takes potential deals identified from the database and re-verifies them
- * using UI scraping (not API) to ensure accurate pricing.
+ * Takes potential deals (where lowest listing < last sale price)
+ * and re-verifies them using UI scraping to get accurate prices.
  * 
- * This is the "hybrid approach" - use fast API for bulk updates,
- * then verify the deals that actually matter with accurate UI scraping.
+ * The API sometimes has stale cached data. This job uses the actual
+ * webpage to get real current prices and updates the database.
  */
 
 import { chromium, Browser, Page } from 'playwright';
 import { REQUEST_DELAY_MS } from '../config.js';
 import { join } from 'path';
 import { 
-  getPotentialDeals,
+  getDealsUnderLastSale,
   updateCardListings,
   initializeDb,
-  DealCandidate,
+  recordSuspiciousListing,
+  ListingDeal,
 } from '../db/client.js';
 import { scrapeListings } from '../tcg/scrapeListings.js';
 
 const USER_DATA_DIR = join(process.cwd(), '.browser-data');
 
 export interface VerifyDealsOptions {
-  minSales?: number;        // Minimum 7-day sales to consider
-  minDiscount?: number;     // Minimum discount % to verify
+  minDiscount?: number;     // Minimum discount % to verify (default 5)
+  maxDiscount?: number;     // Maximum discount % to verify (filter out suspicious, default 40)
   limit?: number;           // Max deals to verify
   headless?: boolean;
 }
@@ -33,23 +34,22 @@ export interface VerifyDealsOptions {
  */
 export async function verifyDeals(options: VerifyDealsOptions = {}): Promise<void> {
   const { 
-    minSales = 3,
-    minDiscount = 10,
+    minDiscount = 5,
+    maxDiscount = 40,
     limit,
     headless = true,
   } = options;
   
   console.log('\n=== Verify Deals Job ===');
-  console.log(`Min Sales: ${minSales}`);
-  console.log(`Min Discount: ${minDiscount}%`);
+  console.log(`Discount Range: ${minDiscount}% - ${maxDiscount}%`);
   console.log(`Headless: ${headless}`);
-  console.log('Method: UI Scraping (bypasses API cache)\n');
+  console.log('Method: UI Scraping (bypasses stale API cache)\n');
   
   // Initialize database
   initializeDb();
   
-  // Get potential deals
-  let deals = getPotentialDeals(minSales, minDiscount);
+  // Get deals where lowest_listing < last_sale_price (same as dashboard)
+  let deals = getDealsUnderLastSale(minDiscount, maxDiscount);
   
   if (deals.length === 0) {
     console.log('No deals found matching criteria.');
@@ -70,6 +70,8 @@ export async function verifyDeals(options: VerifyDealsOptions = {}): Promise<voi
   let notDeals = 0;
   let errors = 0;
   
+  const startTime = Date.now();
+  
   try {
     // Launch browser
     console.log('Launching browser...\n');
@@ -86,9 +88,8 @@ export async function verifyDeals(options: VerifyDealsOptions = {}): Promise<voi
       const progress = `[${i + 1}/${deals.length}]`;
       
       try {
-        const discount = deal.market_vs_7d_pct?.toFixed(1) || '?';
         console.log(`${progress} 🔍 ${deal.name}`);
-        console.log(`   Expected: Market $${deal.market_price?.toFixed(2)} → Avg $${deal.avg_price_7d?.toFixed(2)} (${discount}% below)`);
+        console.log(`   API says: $${deal.lowest_listing.toFixed(2)} listing vs $${deal.last_sale_price.toFixed(2)} last sale (${deal.discount_pct}% off)`);
         
         // Use UI scraping to get ACTUAL current prices
         const summary = await scrapeListings(
@@ -96,39 +97,53 @@ export async function verifyDeals(options: VerifyDealsOptions = {}): Promise<voi
           deal.product_id, 
           deal.tcg_url,
           deal.name,
-          'single' // Assuming singles for now
+          deal.product_type
         );
         
-        // Update database with verified prices
+        // Update database with real prices
         updateCardListings(
           deal.product_id,
           summary.lowest_price,
           summary.lowest_price_with_shipping,
-          summary.listing_count,
-          true // Mark as verified
+          summary.listing_count
         );
         
         verified++;
         
         // Check if it's still a deal after verification
-        const actualPrice = summary.lowest_price_with_shipping;
-        const marketPrice = deal.market_price;
+        const actualPrice = summary.lowest_price_with_shipping || summary.lowest_price;
+        const lastSale = deal.last_sale_price;
+        const apiPrice = deal.lowest_listing;
         
-        if (actualPrice && marketPrice) {
-          const actualDiscount = ((marketPrice - actualPrice) / marketPrice * 100);
+        if (actualPrice && lastSale) {
+          const actualDiscount = ((lastSale - actualPrice) / lastSale * 100);
+          
+          // Record if API was significantly wrong (more than 5% off)
+          const priceDiff = Math.abs(actualPrice - apiPrice) / apiPrice * 100;
+          if (priceDiff > 5) {
+            recordSuspiciousListing(
+              deal.product_id,
+              apiPrice,
+              actualPrice,
+              lastSale,
+              deal.discount_pct,
+              actualDiscount
+            );
+          }
           
           if (actualDiscount >= minDiscount) {
-            console.log(`   ✅ VERIFIED DEAL: $${actualPrice.toFixed(2)} (${actualDiscount.toFixed(1)}% below market)`);
+            console.log(`   ✅ VERIFIED: $${actualPrice.toFixed(2)} (${actualDiscount.toFixed(1)}% below last sale)`);
             stillDeals++;
           } else if (actualDiscount > 0) {
-            console.log(`   ⚠️  Small discount: $${actualPrice.toFixed(2)} (${actualDiscount.toFixed(1)}% below, not ${discount}%)`);
+            console.log(`   ⚠️  Small: $${actualPrice.toFixed(2)} (only ${actualDiscount.toFixed(1)}% off, was ${deal.discount_pct}%)`);
             notDeals++;
           } else {
-            console.log(`   ❌ NOT A DEAL: $${actualPrice.toFixed(2)} (${Math.abs(actualDiscount).toFixed(1)}% ABOVE market)`);
+            console.log(`   ❌ NOT A DEAL: $${actualPrice.toFixed(2)} is ${Math.abs(actualDiscount).toFixed(1)}% ABOVE last sale`);
             notDeals++;
           }
-        } else {
-          console.log(`   ℹ️  No listings found`);
+        } else if (!actualPrice) {
+          console.log(`   ℹ️  No English NM listings found`);
+          notDeals++;
         }
         
         console.log('');
@@ -144,15 +159,20 @@ export async function verifyDeals(options: VerifyDealsOptions = {}): Promise<voi
       }
     }
     
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    
     // Summary
     console.log('=== Summary ===');
-    console.log(`Deals verified: ${verified}`);
+    console.log(`Time: ${elapsed}s`);
+    console.log(`Deals checked: ${verified}`);
     console.log(`Still good deals: ${stillDeals} ✅`);
-    console.log(`Not really deals: ${notDeals} ❌`);
+    console.log(`Not actually deals: ${notDeals} ❌ (stale API data)`);
     console.log(`Errors: ${errors}`);
     
     if (stillDeals > 0) {
-      console.log(`\n💡 Run "npm run dev deals" to see verified deals!`);
+      console.log(`\n🎉 ${stillDeals} real deals found! Check the dashboard.`);
+    } else if (verified > 0) {
+      console.log(`\n📊 All ${verified} "deals" were stale API data. Prices have been updated.`);
     }
     
   } catch (error) {
@@ -167,4 +187,3 @@ export async function verifyDeals(options: VerifyDealsOptions = {}): Promise<voi
     console.log('\nBrowser closed.');
   }
 }
-

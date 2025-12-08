@@ -24,6 +24,8 @@ import {
   getCollectionCount,
   searchCardsByName,
   getCardByProductId,
+  getSuspiciousListings,
+  getSuspiciousCount,
 } from './db/client.js';
 import { chromium } from 'playwright';
 import { join } from 'path';
@@ -496,22 +498,54 @@ program
 
 program
   .command('verify-deals')
-  .description('Verify potential deals using UI scraping (bypasses API cache)')
-  .option('-m, --min-sales <number>', 'Minimum 7-day sales', '3')
-  .option('-d, --discount <number>', 'Minimum discount percentage', '10')
+  .description('Verify potential deals using UI scraping (bypasses stale API cache)')
+  .option('-d, --min-discount <number>', 'Minimum discount percentage', '5')
+  .option('-x, --max-discount <number>', 'Maximum discount % (filter suspicious)', '40')
   .option('-l, --limit <number>', 'Max deals to verify')
   .option('--visible', 'Run browser in visible mode')
   .action(async (options) => {
     try {
       await verifyDeals({
-        minSales: parseInt(options.minSales, 10),
-        minDiscount: parseInt(options.discount, 10),
+        minDiscount: parseInt(options.minDiscount, 10),
+        maxDiscount: parseInt(options.maxDiscount, 10),
         limit: options.limit ? parseInt(options.limit, 10) : undefined,
         headless: !options.visible,
       });
     } catch (error) {
       console.error('Failed to verify deals:', error);
       process.exit(1);
+    } finally {
+      closeDb();
+    }
+  });
+
+program
+  .command('suspicious')
+  .description('Show products with known stale/suspicious API prices')
+  .action(() => {
+    try {
+      initializeDb();
+      
+      const count = getSuspiciousCount();
+      const listings = getSuspiciousListings();
+      
+      console.log('\n=== Suspicious API Prices ===\n');
+      console.log(`Products with known stale prices: ${count}\n`);
+      
+      if (listings.length === 0) {
+        console.log('No suspicious listings recorded yet.');
+        console.log('Run "verify-deals" to identify stale API data.');
+        return;
+      }
+      
+      for (const item of listings) {
+        const diff = ((item.verified_price - item.api_price) / item.api_price * 100).toFixed(1);
+        console.log(`⚠️  Product ${item.product_id}`);
+        console.log(`   API claimed: $${item.api_price.toFixed(2)} (${item.discount_claimed.toFixed(1)}% off)`);
+        console.log(`   Actually: $${item.verified_price.toFixed(2)} (${item.discount_actual.toFixed(1)}% off)`);
+        console.log(`   Price was ${diff}% different from API`);
+        console.log('');
+      }
     } finally {
       closeDb();
     }

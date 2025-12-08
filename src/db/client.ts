@@ -188,14 +188,10 @@ export function updateCardListings(
   lowestPrice: number | null,
   lowestPriceWithShipping: number | null,
   listingCount: number,
-  verified?: boolean,
   currentQuantity?: number,
   currentSellers?: number
 ): void {
   const database = getDb();
-  
-  // If verified=true, also update listing_verified_at timestamp
-  const verifiedClause = verified ? ', listing_verified_at = datetime(\'now\')' : '';
   
   const stmt = database.prepare(`
     UPDATE card SET
@@ -206,7 +202,6 @@ export function updateCardListings(
       current_sellers = ?,
       listings_updated_at = datetime('now'),
       updated_at = datetime('now')
-      ${verifiedClause}
     WHERE product_id = ?
   `);
   
@@ -558,6 +553,114 @@ export function getPotentialDeals(minSales = 3, maxPctOfMarket = 90): DealCandid
     ORDER BY market_vs_7d_pct DESC
     LIMIT 50
   `).all(minSales, 100 - maxPctOfMarket) as DealCandidate[];
+}
+
+/**
+ * Get deals where lowest listing is below last sale price
+ * This matches what the dashboard shows as "Deals"
+ */
+export interface ListingDeal {
+  product_id: number;
+  name: string;
+  set_name: string | null;
+  product_type: string;
+  market_price: number | null;
+  lowest_listing: number;
+  last_sale_price: number;
+  last_sale_date: string;
+  tcg_url: string;
+  discount_pct: number;
+  savings: number;
+}
+
+export function getDealsUnderLastSale(minDiscountPct = 5, maxDiscountPct = 40): ListingDeal[] {
+  const database = getDb();
+  return database.prepare(`
+    SELECT 
+      c.product_id,
+      c.name,
+      c.set_name,
+      c.product_type,
+      c.market_price,
+      c.lowest_listing,
+      (SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) as last_sale_price,
+      (SELECT sold_at FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) as last_sale_date,
+      c.tcg_url,
+      ROUND((1.0 - c.lowest_listing / (SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1)) * 100, 1) as discount_pct,
+      ROUND((SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) - c.lowest_listing, 2) as savings
+    FROM card c
+    WHERE c.lowest_listing IS NOT NULL
+      AND (SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) IS NOT NULL
+      AND c.lowest_listing < (SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) * (1 - ? / 100.0)
+      AND c.lowest_listing >= (SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) * (1 - ? / 100.0)
+    ORDER BY discount_pct DESC
+  `).all(minDiscountPct, maxDiscountPct) as ListingDeal[];
+}
+
+/**
+ * Record a suspicious listing (when API data doesn't match UI-verified data)
+ */
+export function recordSuspiciousListing(
+  productId: number,
+  apiPrice: number,
+  verifiedPrice: number,
+  lastSalePrice: number | null,
+  discountClaimed: number,
+  discountActual: number
+): void {
+  const database = getDb();
+  database.prepare(`
+    INSERT INTO suspicious_listing 
+      (product_id, api_price, verified_price, last_sale_price, discount_claimed, discount_actual)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(productId, apiPrice, verifiedPrice, lastSalePrice, discountClaimed, discountActual);
+}
+
+/**
+ * Check if a price matches a known suspicious pattern for this product
+ */
+export function isSuspiciousPrice(productId: number, price: number): boolean {
+  const database = getDb();
+  const result = database.prepare(`
+    SELECT COUNT(*) as count FROM suspicious_listing
+    WHERE product_id = ?
+      AND ABS(api_price - ?) < 0.01
+  `).get(productId, price) as { count: number };
+  return result.count > 0;
+}
+
+/**
+ * Get all suspicious listings for a product
+ */
+export function getSuspiciousListings(productId?: number): Array<{
+  product_id: number;
+  api_price: number;
+  verified_price: number;
+  last_sale_price: number | null;
+  discount_claimed: number;
+  discount_actual: number;
+  verified_at: string;
+}> {
+  const database = getDb();
+  if (productId) {
+    return database.prepare(`
+      SELECT * FROM suspicious_listing WHERE product_id = ? ORDER BY verified_at DESC
+    `).all(productId) as any[];
+  }
+  return database.prepare(`
+    SELECT * FROM suspicious_listing ORDER BY verified_at DESC LIMIT 100
+  `).all() as any[];
+}
+
+/**
+ * Get count of suspicious listings by product
+ */
+export function getSuspiciousCount(): number {
+  const database = getDb();
+  const result = database.prepare(`
+    SELECT COUNT(DISTINCT product_id) as count FROM suspicious_listing
+  `).get() as { count: number };
+  return result.count;
 }
 
 /**

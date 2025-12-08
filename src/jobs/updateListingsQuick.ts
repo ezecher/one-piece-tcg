@@ -15,6 +15,7 @@ import {
   getAllCards, 
   initializeDb,
   updateCardListings,
+  isSuspiciousPrice,
   Card,
 } from '../db/client.js';
 
@@ -494,17 +495,20 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
         
         // Update database
         if (result.lowestPrice !== null || result.currentQuantity > 0) {
+          // Check if this price has been flagged as suspicious before
+          const suspicious = result.lowestPrice !== null && isSuspiciousPrice(card.product_id, result.lowestPrice);
+          
           updateCardListings(
             card.product_id,
             result.lowestPrice,
             result.lowestWithShipping || result.lowestPrice,
             result.listingCount,
-            false, // not verified (API data)
             result.currentQuantity,
             result.currentSellers
           );
           if (result.lowestPrice !== null) {
-            console.log(` $${result.lowestPrice.toFixed(2)} (${result.listingCount} NM | ${result.currentQuantity} qty | ${result.currentSellers} sellers)`);
+            const susFlag = suspicious ? ' ⚠️ SUS' : '';
+            console.log(` $${result.lowestPrice.toFixed(2)} (${result.listingCount} NM | ${result.currentQuantity} qty | ${result.currentSellers} sellers)${susFlag}`);
           } else {
             console.log(` no NM listings (${result.currentQuantity} qty | ${result.currentSellers} sellers)`);
           }
