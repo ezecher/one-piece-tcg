@@ -62,6 +62,28 @@ function isNonEnglishListing(text: string): boolean {
     'kr card',
     '한국어',
     '한국',
+    // Chinese
+    'chinese',
+    'china',
+    'cn version',
+    '(cn)',
+    '[cn]',
+    ' cn ',
+    '-cn-',
+    'cn card',
+    'simplified chinese',
+    'traditional chinese',
+    '中文',
+    '中国',
+    '简体',
+    '繁體',
+    // Taiwanese
+    'taiwanese',
+    'taiwan',
+    '(tw)',
+    '[tw]',
+    ' tw ',
+    '台灣',
   ];
   
   return nonEnglishIndicators.some(indicator => cleanedText.includes(indicator));

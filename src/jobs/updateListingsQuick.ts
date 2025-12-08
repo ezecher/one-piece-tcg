@@ -365,8 +365,17 @@ async function fetchListingsViaUI(
       return { listings, currentQty, currentSellers };
     });
     
-    // Filter in JS
-    const nonEngPatterns = ['japanese', 'japan', 'jp ', '(jp)', 'korean', 'korea', 'kr ', '(kr)'];
+    // Filter in JS - exclude non-English listings
+    const nonEngPatterns = [
+      // Japanese
+      'japanese', 'japan', 'jp ', '(jp)', '[jp]', '-jp-',
+      // Korean
+      'korean', 'korea', 'kr ', '(kr)', '[kr]', '-kr-',
+      // Chinese
+      'chinese', 'china', 'cn ', '(cn)', '[cn]', '-cn-',
+      // Taiwanese
+      'taiwanese', 'taiwan', '(tw)', '[tw]',
+    ];
     
     const filtered = result.listings.filter(item => {
       const lowerText = item.text.toLowerCase();
