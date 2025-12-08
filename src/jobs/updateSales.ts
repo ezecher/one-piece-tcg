@@ -4,7 +4,7 @@
  * Fetches latest sales data for all tracked products
  */
 
-import { chromium, Browser, Page } from 'playwright';
+import { chromium, Page } from 'playwright';
 import { REQUEST_DELAY_MS } from '../config.js';
 import { join } from 'path';
 
@@ -34,6 +34,7 @@ export interface UpdateSalesOptions {
   headless?: boolean;
   useApi?: boolean;          // Try API first before UI scraping
   useChrome?: boolean;       // Use real Chrome profile (for login)
+  workers?: number;          // Number of parallel browser tabs (1-4)
 }
 
 /**
@@ -58,6 +59,29 @@ function convertSalesForDb(sales: NormalizedSale[]): Array<{
 }
 
 /**
+ * Process a single card's sales
+ */
+async function processCardSales(
+  page: Page,
+  card: Card,
+  runId: number,
+  request?: any
+): Promise<{ salesFound: number; salesInserted: number; error: boolean }> {
+  try {
+    const sales = await getProductSales(page, card.product_id, card.tcg_url, request);
+    
+    if (sales.length > 0) {
+      const inserted = saveSaleEvents(card.product_id, convertSalesForDb(sales), runId);
+      return { salesFound: sales.length, salesInserted: inserted, error: false };
+    }
+    
+    return { salesFound: 0, salesInserted: 0, error: false };
+  } catch {
+    return { salesFound: 0, salesInserted: 0, error: true };
+  }
+}
+
+/**
  * Run the sales update job
  */
 export async function updateSales(options: UpdateSalesOptions = {}): Promise<void> {
@@ -65,14 +89,17 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
     productIds, 
     setName,
     limit, 
-    headless = true, 
+    headless = false,  // Default to visible - TCGplayer blocks headless
     useApi = true,
     useChrome = false,
+    workers = 1,
   } = options;
   
+  const numWorkers = Math.min(Math.max(1, workers), 4);
+  
   console.log('\n=== Update Sales Job ===');
-  console.log(`Headless: ${headless}`);
   console.log(`Use API: ${useApi}`);
+  if (numWorkers > 1) console.log(`Workers: ${numWorkers} (parallel)`);
   if (setName) console.log(`Set filter: ${setName}`);
   if (limit) console.log(`Limit: ${limit} products`);
   console.log('');
@@ -114,8 +141,6 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
   const runId = startScrapeRun('sales');
   console.log(`Started scrape run #${runId}\n`);
   
-  let browser: Browser | null = null;
-  let page: Page | null = null;
   let totalSalesScraped = 0;
   let totalErrors = 0;
   let productsProcessed = 0;
@@ -134,73 +159,93 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
         }
       );
     } else {
-      console.log('Launching browser (using saved session)...');
+      console.log('Launching browser...');
       context = await chromium.launchPersistentContext(USER_DATA_DIR, {
         headless,
         viewport: { width: 1280, height: 800 },
       });
     }
-    browser = context.browser();
-    page = context.pages()[0] || await context.newPage();
     
     // Get API request context for faster fetching
     const request = useApi ? context.request : undefined;
+    const startTime = Date.now();
     
-    // Process each card
-    for (let i = 0; i < cards.length; i++) {
-      const card = cards[i];
-      const progress = `[${i + 1}/${cards.length}]`;
+    if (numWorkers === 1) {
+      // Single worker - detailed output
+      const page = context.pages()[0] || await context.newPage();
       
-      try {
-        console.log(`${progress} ${card.name} (${card.product_id})...`);
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        process.stdout.write(`[${i + 1}/${cards.length}] ${card.name.substring(0, 40).padEnd(40)}...`);
         
-        // Get sales for this product
-        const sales = await getProductSales(
-          page, 
-          card.product_id, 
-          card.tcg_url, 
-          request
-        );
+        const result = await processCardSales(page, card, runId, request);
         
-        if (sales.length > 0) {
-          // Save to database
-          const inserted = saveSaleEvents(
-            card.product_id, 
-            convertSalesForDb(sales),
-            runId
-          );
-          
-          console.log(`  → ${sales.length} sales found, ${inserted} new`);
-          totalSalesScraped += inserted;
+        if (result.error) {
+          console.log(' ERROR');
+          totalErrors++;
+        } else if (result.salesInserted > 0) {
+          console.log(` +${result.salesInserted} new (${result.salesFound} total)`);
+          totalSalesScraped += result.salesInserted;
         } else {
-          console.log(`  → No sales found`);
+          console.log(` ${result.salesFound} sales (0 new)`);
         }
         
         productsProcessed++;
-        
-        // Update run progress
         updateScrapeRun(runId, { 
           products_scraped: productsProcessed,
           sales_scraped: totalSalesScraped,
         });
         
-      } catch (error) {
-        console.error(`  → Error: ${error}`);
-        totalErrors++;
-        updateScrapeRun(runId, { errors: totalErrors });
+        if (i < cards.length - 1) {
+          await page.waitForTimeout(REQUEST_DELAY_MS);
+        }
+      }
+    } else {
+      // Parallel workers - progress bar output
+      const pages: Page[] = [];
+      for (let i = 0; i < numWorkers; i++) {
+        pages.push(await context.newPage());
       }
       
-      // Delay between requests
-      if (i < cards.length - 1) {
-        await page.waitForTimeout(REQUEST_DELAY_MS);
+      for (let i = 0; i < cards.length; i += numWorkers) {
+        const batch = cards.slice(i, Math.min(i + numWorkers, cards.length));
+        
+        const results = await Promise.all(
+          batch.map((card, idx) => processCardSales(pages[idx], card, runId, request))
+        );
+        
+        for (const result of results) {
+          productsProcessed++;
+          if (result.error) {
+            totalErrors++;
+          } else {
+            totalSalesScraped += result.salesInserted;
+          }
+        }
+        
+        const pct = Math.round((productsProcessed / cards.length) * 100);
+        process.stdout.write(`\r⏳ Progress: ${pct}% (${productsProcessed}/${cards.length}) | New sales: ${totalSalesScraped}   `);
+        
+        updateScrapeRun(runId, { 
+          products_scraped: productsProcessed,
+          sales_scraped: totalSalesScraped,
+        });
+        
+        if (i + numWorkers < cards.length) {
+          await pages[0].waitForTimeout(100);
+        }
       }
+      console.log('');
     }
+    
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     
     // Summary
     console.log('\n=== Summary ===');
     console.log(`Products processed: ${productsProcessed}`);
     console.log(`New sales scraped: ${totalSalesScraped}`);
     console.log(`Errors: ${totalErrors}`);
+    console.log(`Time: ${elapsed}s (${(cards.length / parseFloat(elapsed)).toFixed(1)} products/sec)`);
     
     const finalSalesCount = countSales();
     console.log(`\nSales in DB: ${initialSalesCount} → ${finalSalesCount} (+${finalSalesCount - initialSalesCount})`);
@@ -210,17 +255,13 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
                    totalErrors < productsProcessed ? 'partial' : 'error';
     finishScrapeRun(runId, status);
     
+    await context.close();
+    console.log('\nBrowser closed.');
+    
   } catch (error) {
     console.error('Job failed:', error);
     finishScrapeRun(runId, 'error', String(error));
     throw error;
-    
-  } finally {
-    if (page) {
-      const context = page.context();
-      await context.close();
-    }
-    console.log('\nBrowser closed.');
   }
 }
 

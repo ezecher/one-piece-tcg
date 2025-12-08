@@ -295,8 +295,9 @@ program
   .option('-l, --limit <number>', 'Max products to process')
   .option('-p, --product <id>', 'Specific product ID to update')
   .option('-s, --set <setName>', 'Filter by set name (e.g., "romance-dawn")')
+  .option('-w, --workers <number>', 'Parallel workers 1-4 (default: 1)', '1')
   .option('--no-api', 'Skip API and use UI scraping only')
-  .option('--visible', 'Run browser in visible mode')
+  .option('--headless', 'Run browser in headless mode (default: visible)')
   .option('--chrome', 'Use your Chrome profile (already logged in)')
   .action(async (options) => {
     try {
@@ -306,9 +307,10 @@ program
         await updateSales({
           setName: options.set,
           limit: options.limit ? parseInt(options.limit, 10) : undefined,
-          headless: !options.visible && !options.chrome,
+          headless: options.headless === true,
           useApi: options.api !== false,
           useChrome: options.chrome,
+          workers: parseInt(options.workers, 10),
         });
       }
     } catch (error) {
