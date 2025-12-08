@@ -781,11 +781,65 @@
       `;
     }
 
+    // Deals sorting state
+    let dealsSortColumn = 'discount_pct';
+    let dealsSortDirection = 'desc';
+    
+    function sortDealsBy(column) {
+      if (dealsSortColumn === column) {
+        dealsSortDirection = dealsSortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        dealsSortColumn = column;
+        dealsSortDirection = ['name', 'set_name'].includes(column) ? 'asc' : 'desc';
+      }
+      renderContent();
+    }
+
     function renderDeals(container) {
       if (dealsData.length === 0) {
         container.innerHTML = '<div class="empty">No deals found. Cards with listings below last sale price will appear here.</div>';
         return;
       }
+
+      // Sort deals
+      const sortedDeals = [...dealsData].sort((a, b) => {
+        let aVal, bVal;
+        switch (dealsSortColumn) {
+          case 'name':
+            aVal = a.name || '';
+            bVal = b.name || '';
+            break;
+          case 'set_name':
+            aVal = a.set_name || '';
+            bVal = b.set_name || '';
+            break;
+          case 'last_sale_price':
+            aVal = a.last_sale_price || 0;
+            bVal = b.last_sale_price || 0;
+            break;
+          case 'lowest_listing':
+            aVal = a.lowest_listing || 0;
+            bVal = b.lowest_listing || 0;
+            break;
+          case 'discount_pct':
+            aVal = a.discount_pct || 0;
+            bVal = b.discount_pct || 0;
+            break;
+          case 'savings':
+            aVal = (a.last_sale_price || 0) - (a.lowest_listing || 0);
+            bVal = (b.last_sale_price || 0) - (b.lowest_listing || 0);
+            break;
+          default:
+            aVal = a.discount_pct || 0;
+            bVal = b.discount_pct || 0;
+        }
+        if (typeof aVal === 'string') {
+          return dealsSortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        }
+        return dealsSortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      });
+
+      const dealsSortClass = (col) => dealsSortColumn === col ? dealsSortDirection : '';
 
       container.innerHTML = `
         <div style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
@@ -796,15 +850,15 @@
           <thead>
             <tr>
               <th></th>
-              <th>Card</th>
-              <th>Last Sale</th>
-              <th>Lowest Listing</th>
-              <th>Discount</th>
-              <th>Savings</th>
+              <th class="sortable ${dealsSortClass('name')}" onclick="sortDealsBy('name')">Card</th>
+              <th class="sortable ${dealsSortClass('last_sale_price')}" onclick="sortDealsBy('last_sale_price')">Last Sale</th>
+              <th class="sortable ${dealsSortClass('lowest_listing')}" onclick="sortDealsBy('lowest_listing')">Lowest Listing</th>
+              <th class="sortable ${dealsSortClass('discount_pct')}" onclick="sortDealsBy('discount_pct')">Discount</th>
+              <th class="sortable ${dealsSortClass('savings')}" onclick="sortDealsBy('savings')">Savings</th>
             </tr>
           </thead>
           <tbody>
-            ${dealsData.map(deal => {
+            ${sortedDeals.map(deal => {
               const savings = deal.last_sale_price - deal.lowest_listing;
               return `
               <tr class="clickable" onclick="showSales(${deal.product_id}, '${escapeHtml(deal.name)}')">
