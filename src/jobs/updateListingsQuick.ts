@@ -379,11 +379,24 @@ async function fetchListingsViaUI(
       'view details',
     ];
     
+    // Conditions to explicitly exclude
+    const badConditions = [
+      'lightly played', 'light play', 'lp ',
+      'moderately played', 'moderate play', 'mp ',
+      'heavily played', 'heavy play', 'hp ',
+      'damaged', 'dmg',
+    ];
+    
     const filtered = result.listings.filter(item => {
       const lowerText = item.text.toLowerCase();
       if (nonEngPatterns.some(p => lowerText.includes(p))) return false;
       
       const lowerCond = item.condition.toLowerCase();
+      
+      // Explicitly exclude bad conditions
+      if (badConditions.some(c => lowerCond.includes(c))) return false;
+      
+      // Must be Near Mint or Unopened
       if (!lowerCond.includes('near mint') && !lowerCond.includes('unopened') && lowerCond !== 'nm') return false;
       
       return true;

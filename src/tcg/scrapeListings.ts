@@ -93,10 +93,26 @@ function isNonEnglishListing(text: string): boolean {
 }
 
 /**
+ * Conditions to explicitly exclude (non-NM)
+ */
+const BAD_CONDITIONS = [
+  'lightly played', 'light play', 'lp ',
+  'moderately played', 'moderate play', 'mp ',
+  'heavily played', 'heavy play', 'hp ',
+  'damaged', 'dmg',
+];
+
+/**
  * Check if condition is Near Mint or Unopened (for sealed products)
  */
 function isNearMintOrUnopened(condition: string): boolean {
   const lowerCondition = condition.toLowerCase();
+  
+  // Explicitly exclude bad conditions first
+  if (BAD_CONDITIONS.some(bad => lowerCondition.includes(bad))) {
+    return false;
+  }
+  
   return lowerCondition.includes('near mint') || 
          lowerCondition === 'nm' ||
          lowerCondition.includes('nm ') ||
