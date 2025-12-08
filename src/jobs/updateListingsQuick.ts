@@ -25,6 +25,7 @@ export interface UpdateListingsOptions {
   limit?: number;            // Max products to process
   headless?: boolean;
   useApi?: boolean;          // Try API first (default: true)
+  workers?: number;          // Number of parallel browser tabs (1-4)
 }
 
 interface ListingResult {
@@ -430,6 +431,52 @@ async function fetchListingsViaUI(
 }
 
 /**
+ * Process a single card and return results
+ */
+async function processCard(
+  page: Page,
+  card: Card,
+  useApi: boolean
+): Promise<{ updated: boolean; apiSuccess: boolean; uiFallback: boolean; result: ListingResult | null }> {
+  try {
+    let result: ListingResult;
+    let apiSuccess = false;
+    let uiFallback = false;
+    
+    if (useApi) {
+      result = await fetchListingsViaApi(page, card.product_id, card.name, card.product_type);
+      if (result.listingCount > 0) {
+        apiSuccess = true;
+      } else {
+        result = await fetchListingsViaUI(page, card.tcg_url);
+        if (result.listingCount > 0) uiFallback = true;
+      }
+    } else {
+      result = await fetchListingsViaUI(page, card.tcg_url);
+    }
+    
+    if (result.lowestPrice !== null || result.currentQuantity > 0) {
+      const suspicious = result.lowestPrice !== null && isSuspiciousPrice(card.product_id, result.lowestPrice);
+      
+      updateCardListings(
+        card.product_id,
+        result.lowestPrice,
+        result.lowestWithShipping || result.lowestPrice,
+        result.listingCount,
+        result.currentQuantity,
+        result.currentSellers
+      );
+      
+      return { updated: true, apiSuccess, uiFallback, result };
+    }
+    
+    return { updated: false, apiSuccess, uiFallback, result: null };
+  } catch {
+    return { updated: false, apiSuccess: false, uiFallback: false, result: null };
+  }
+}
+
+/**
  * Main job: Update listings for all/filtered cards
  */
 export async function updateListingsQuick(options: UpdateListingsOptions = {}): Promise<void> {
@@ -437,13 +484,16 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
     productIds, 
     setName,
     limit, 
-    headless = true, 
+    headless = false,  // Default to visible - TCGplayer blocks headless browsers 
     useApi = true,
+    workers = 1,
   } = options;
+  
+  const numWorkers = Math.min(Math.max(1, workers), 4);
   
   console.log('\n=== Quick Listings Update ===');
   console.log(`Mode: ${useApi ? 'API (fast)' : 'UI scraping'}`);
-  console.log(`Headless: ${headless}`);
+  if (numWorkers > 1) console.log(`Workers: ${numWorkers} (parallel)`);
   if (setName) console.log(`Set filter: ${setName}`);
   if (limit) console.log(`Limit: ${limit} products`);
   console.log('');
@@ -477,79 +527,83 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
     return;
   }
   
-  let totalUpdated = 0;
-  let totalErrors = 0;
-  let apiSuccesses = 0;
-  let uiFallbacks = 0;
-  
   // Launch browser
   console.log('Launching browser...');
   const context = await chromium.launchPersistentContext(USER_DATA_DIR, {
     headless,
     viewport: { width: 1280, height: 800 },
   });
-  const page = context.pages()[0] || await context.newPage();
   
   try {
     const startTime = Date.now();
+    let totalUpdated = 0;
+    let totalErrors = 0;
+    let apiSuccesses = 0;
+    let uiFallbacks = 0;
+    let processed = 0;
     
-    for (let i = 0; i < cards.length; i++) {
-      const card = cards[i];
-      const progress = `[${i + 1}/${cards.length}]`;
+    if (numWorkers === 1) {
+      // Single worker - original behavior with detailed output
+      const page = context.pages()[0] || await context.newPage();
       
-      try {
-        process.stdout.write(`${progress} ${card.name.substring(0, 40).padEnd(40)}...`);
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        process.stdout.write(`[${i + 1}/${cards.length}] ${card.name.substring(0, 40).padEnd(40)}...`);
         
-        let result: ListingResult;
+        const res = await processCard(page, card, useApi);
         
-        // Try API first
-        if (useApi) {
-          result = await fetchListingsViaApi(page, card.product_id, card.name, card.product_type);
-          
-          if (result.listingCount > 0) {
-            apiSuccesses++;
+        if (res.updated && res.result) {
+          const suspicious = res.result.lowestPrice !== null && isSuspiciousPrice(card.product_id, res.result.lowestPrice);
+          const susFlag = suspicious ? ' ⚠️ SUS' : '';
+          if (res.result.lowestPrice !== null) {
+            console.log(` $${res.result.lowestPrice.toFixed(2)} (${res.result.listingCount} NM)${susFlag}`);
           } else {
-            // Fallback to UI
-            result = await fetchListingsViaUI(page, card.tcg_url);
-            if (result.listingCount > 0) uiFallbacks++;
-          }
-        } else {
-          result = await fetchListingsViaUI(page, card.tcg_url);
-        }
-        
-        // Update database
-        if (result.lowestPrice !== null || result.currentQuantity > 0) {
-          // Check if this price has been flagged as suspicious before
-          const suspicious = result.lowestPrice !== null && isSuspiciousPrice(card.product_id, result.lowestPrice);
-          
-          updateCardListings(
-            card.product_id,
-            result.lowestPrice,
-            result.lowestWithShipping || result.lowestPrice,
-            result.listingCount,
-            result.currentQuantity,
-            result.currentSellers
-          );
-          if (result.lowestPrice !== null) {
-            const susFlag = suspicious ? ' ⚠️ SUS' : '';
-            console.log(` $${result.lowestPrice.toFixed(2)} (${result.listingCount} NM | ${result.currentQuantity} qty | ${result.currentSellers} sellers)${susFlag}`);
-          } else {
-            console.log(` no NM listings (${result.currentQuantity} qty | ${result.currentSellers} sellers)`);
+            console.log(` no NM`);
           }
           totalUpdated++;
         } else {
-          console.log(' no listings');
+          console.log(' -');
         }
         
-      } catch (error) {
-        console.log(` ERROR: ${error}`);
-        totalErrors++;
+        if (res.apiSuccess) apiSuccesses++;
+        if (res.uiFallback) uiFallbacks++;
+        if (!res.updated && !res.apiSuccess && !res.uiFallback) totalErrors++;
+        
+        if (i < cards.length - 1) {
+          await page.waitForTimeout(useApi ? 150 : REQUEST_DELAY_MS);
+        }
+      }
+    } else {
+      // Parallel workers - progress bar output
+      const pages: Page[] = [];
+      for (let i = 0; i < numWorkers; i++) {
+        pages.push(await context.newPage());
       }
       
-      // Small delay to avoid rate limiting
-      if (i < cards.length - 1) {
-        await page.waitForTimeout(useApi ? 200 : REQUEST_DELAY_MS);
+      // Process cards in parallel batches
+      for (let i = 0; i < cards.length; i += numWorkers) {
+        const batch = cards.slice(i, Math.min(i + numWorkers, cards.length));
+        
+        const results = await Promise.all(
+          batch.map((card, idx) => processCard(pages[idx], card, useApi))
+        );
+        
+        for (const res of results) {
+          processed++;
+          if (res.updated) totalUpdated++;
+          if (res.apiSuccess) apiSuccesses++;
+          if (res.uiFallback) uiFallbacks++;
+          if (!res.updated && !res.apiSuccess && !res.uiFallback) totalErrors++;
+        }
+        
+        const pct = Math.round((processed / cards.length) * 100);
+        process.stdout.write(`\r⏳ Progress: ${pct}% (${processed}/${cards.length}) | Updated: ${totalUpdated}   `);
+        
+        if (i + numWorkers < cards.length) {
+          await pages[0].waitForTimeout(useApi ? 100 : REQUEST_DELAY_MS);
+        }
       }
+      console.log(''); // New line after progress
     }
     
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);

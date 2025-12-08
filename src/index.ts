@@ -346,7 +346,8 @@ program
   .option('-s, --set <name>', 'Filter by set name')
   .option('-l, --limit <number>', 'Max products to process')
   .option('-p, --product <id>', 'Specific product ID to refresh')
-  .option('--visible', 'Run browser in visible mode')
+  .option('-w, --workers <number>', 'Parallel workers 1-4 (default: 1)', '1')
+  .option('--headless', 'Run browser in headless mode (default: visible)')
   .option('--no-api', 'Skip API and use UI scraping only')
   .action(async (options) => {
     try {
@@ -354,8 +355,9 @@ program
         setName: options.set,
         limit: options.limit ? parseInt(options.limit, 10) : undefined,
         productIds: options.product ? [parseInt(options.product, 10)] : undefined,
-        headless: !options.visible,
+        headless: options.headless === true,
         useApi: options.api !== false,
+        workers: parseInt(options.workers, 10),
       });
     } catch (error) {
       console.error('Failed to refresh listings:', error);
