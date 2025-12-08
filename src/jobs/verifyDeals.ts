@@ -24,7 +24,6 @@ const USER_DATA_DIR = join(process.cwd(), '.browser-data');
 
 export interface VerifyDealsOptions {
   minDiscount?: number;     // Minimum discount % to verify (default 5)
-  maxDiscount?: number;     // Maximum discount % to verify (filter out suspicious, default 40)
   limit?: number;           // Max deals to verify
   headless?: boolean;
 }
@@ -35,13 +34,12 @@ export interface VerifyDealsOptions {
 export async function verifyDeals(options: VerifyDealsOptions = {}): Promise<void> {
   const { 
     minDiscount = 5,
-    maxDiscount = 40,
     limit,
     headless = true,
   } = options;
   
   console.log('\n=== Verify Deals Job ===');
-  console.log(`Discount Range: ${minDiscount}% - ${maxDiscount}%`);
+  console.log(`Min Discount: ${minDiscount}%`);
   console.log(`Headless: ${headless}`);
   console.log('Method: UI Scraping (bypasses stale API cache)\n');
   
@@ -49,7 +47,7 @@ export async function verifyDeals(options: VerifyDealsOptions = {}): Promise<voi
   initializeDb();
   
   // Get deals where lowest_listing < last_sale_price (same as dashboard)
-  let deals = getDealsUnderLastSale(minDiscount, maxDiscount);
+  let deals = getDealsUnderLastSale(minDiscount);
   
   if (deals.length === 0) {
     console.log('No deals found matching criteria.');

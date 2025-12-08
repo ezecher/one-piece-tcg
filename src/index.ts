@@ -500,14 +500,12 @@ program
   .command('verify-deals')
   .description('Verify potential deals using UI scraping (bypasses stale API cache)')
   .option('-d, --min-discount <number>', 'Minimum discount percentage', '5')
-  .option('-x, --max-discount <number>', 'Maximum discount % (filter suspicious)', '40')
   .option('-l, --limit <number>', 'Max deals to verify')
   .option('--visible', 'Run browser in visible mode')
   .action(async (options) => {
     try {
       await verifyDeals({
         minDiscount: parseInt(options.minDiscount, 10),
-        maxDiscount: parseInt(options.maxDiscount, 10),
         limit: options.limit ? parseInt(options.limit, 10) : undefined,
         headless: !options.visible,
       });

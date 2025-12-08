@@ -573,7 +573,7 @@ export interface ListingDeal {
   savings: number;
 }
 
-export function getDealsUnderLastSale(minDiscountPct = 5, maxDiscountPct = 40): ListingDeal[] {
+export function getDealsUnderLastSale(minDiscountPct = 5): ListingDeal[] {
   const database = getDb();
   return database.prepare(`
     SELECT 
@@ -592,9 +592,8 @@ export function getDealsUnderLastSale(minDiscountPct = 5, maxDiscountPct = 40): 
     WHERE c.lowest_listing IS NOT NULL
       AND (SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) IS NOT NULL
       AND c.lowest_listing < (SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) * (1 - ? / 100.0)
-      AND c.lowest_listing >= (SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) * (1 - ? / 100.0)
     ORDER BY discount_pct DESC
-  `).all(minDiscountPct, maxDiscountPct) as ListingDeal[];
+  `).all(minDiscountPct) as ListingDeal[];
 }
 
 /**
