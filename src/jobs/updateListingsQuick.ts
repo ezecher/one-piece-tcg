@@ -375,6 +375,8 @@ async function fetchListingsViaUI(
       'chinese', 'china', 'cn ', '(cn)', '[cn]', '-cn-',
       // Taiwanese
       'taiwanese', 'taiwan', '(tw)', '[tw]',
+      // Photo listings are almost always non-English variants trying to avoid filters
+      'view details',
     ];
     
     const filtered = result.listings.filter(item => {

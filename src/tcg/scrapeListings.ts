@@ -84,6 +84,9 @@ function isNonEnglishListing(text: string): boolean {
     '[tw]',
     ' tw ',
     '台灣',
+    // Photo listings - sellers trying to avoid filters by posting photos
+    // Legitimate English NM listings don't need photos
+    'view details',
   ];
   
   return nonEnglishIndicators.some(indicator => cleanedText.includes(indicator));
