@@ -136,16 +136,16 @@ export async function updateAllSets(options: Omit<UpdateProductsOptions, 'setNam
   console.log('\n=== Update All Sets ===');
   console.log(`Processing ${ONE_PIECE_SETS.length} sets...\n`);
   
-  for (const setSlug of ONE_PIECE_SETS) {
-    console.log(`\n--- Processing set: ${setSlug} ---`);
+  for (const set of ONE_PIECE_SETS) {
+    console.log(`\n--- Processing set: ${set.name} ---`);
     
     try {
       await updateProducts({
         ...options,
-        setName: setSlug,
+        setName: set.slug,
       });
     } catch (error) {
-      console.error(`Failed to process set ${setSlug}:`, error);
+      console.error(`Failed to process set ${set.name}:`, error);
       // Continue with next set
     }
   }

@@ -418,7 +418,7 @@ export function countSales(): number {
 /**
  * Start a new scrape run
  */
-export function startScrapeRun(runType: 'products' | 'sales', mode?: string): number {
+export function startScrapeRun(runType: 'products' | 'sales' | 'listings', mode?: string): number {
   const database = getDb();
   
   const result = database.prepare(`
