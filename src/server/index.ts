@@ -8,6 +8,8 @@ import express from 'express';
 import cors from 'cors';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { writeFileSync, readFileSync } from 'fs';
+import { DB_PATH } from '../config.js';
 import {
   initializeDb,
   getAllCards,
@@ -200,6 +202,55 @@ app.post('/api/collection/:productId/qty', (req, res) => {
     } else {
       res.status(404).json({ success: false, message: 'Card not found' });
     }
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// ============ Database Sync API ============
+
+// Upload database (for syncing local DB to Railway)
+// Usage: curl -X POST -H "Content-Type: application/octet-stream" --data-binary @tcg_sales.db https://your-app.railway.app/api/db/upload?key=YOUR_SECRET
+app.post('/api/db/upload', (req, res) => {
+  const uploadKey = process.env.DB_UPLOAD_KEY || 'dev-upload-key';
+  const providedKey = req.query.key as string;
+  
+  if (providedKey !== uploadKey) {
+    return res.status(403).json({ error: 'Invalid upload key' });
+  }
+  
+  const chunks: Buffer[] = [];
+  req.on('data', (chunk: Buffer) => chunks.push(chunk));
+  req.on('end', () => {
+    try {
+      const dbBuffer = Buffer.concat(chunks);
+      writeFileSync(DB_PATH, dbBuffer);
+      res.json({ 
+        success: true, 
+        message: 'Database uploaded successfully',
+        size: dbBuffer.length,
+        path: DB_PATH
+      });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+});
+
+// Download database (for backup)
+app.get('/api/db/download', (req, res) => {
+  const uploadKey = process.env.DB_UPLOAD_KEY || 'dev-upload-key';
+  const providedKey = req.query.key as string;
+  
+  if (providedKey !== uploadKey) {
+    return res.status(403).json({ error: 'Invalid key' });
+  }
+  
+  try {
+    const dbBuffer = readFileSync(DB_PATH);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'attachment; filename=tcg_sales.db');
+    res.send(dbBuffer);
   } catch (error) {
     res.status(500).json({ error: String(error) });
   }

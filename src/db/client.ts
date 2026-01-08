@@ -5,7 +5,7 @@
  */
 
 import Database from 'better-sqlite3';
-import { readFileSync } from 'fs';
+import { readFileSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { DB_PATH } from '../config.js';
@@ -87,6 +87,13 @@ export interface SaleEventInput {
  */
 export function getDb(): Database.Database {
   if (!db) {
+    // Ensure the database directory exists
+    const dbDir = dirname(DB_PATH);
+    if (dbDir && dbDir !== '.' && !existsSync(dbDir)) {
+      mkdirSync(dbDir, { recursive: true });
+      console.log(`Created database directory: ${dbDir}`);
+    }
+    
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
