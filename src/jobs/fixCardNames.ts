@@ -29,6 +29,7 @@ const GENERIC_NAME_PATTERNS = [
 
 // Set names that shouldn't be used as card names
 const SET_NAMES = [
+  // Main sets
   'Romance Dawn',
   'Paramount War',
   'Pillars of Strength',
@@ -43,10 +44,70 @@ const SET_NAMES = [
   'Memorial Collection',
   'Royal Blood',
   'Legacy of the Master',
+  // Premium/Extra sets
+  'Premium Booster -The Best-',
+  'Premium Booster -The Best- Vol. 2',
+  'Extra Booster: Anime 25th Collection',
+  'Extra Booster: Memorial Collection',
+  // Promo sets
+  'One Piece Promotion Cards',
+  'One Piece Demo Deck Cards',
+  // Starter decks
+  'Starter Deck EX: Gear 5',
+  'Ultra Deck: The Three Brothers',
+  'Ultra Deck: The Three Captains',
+  'Learn Together Deck Set',
+  // Tournament/Pre-release
+  'Carrying On His Will: 3rd Anniversary Tournament Cards',
+  'Emperors in the New World: 2nd Anniversary Tournament Cards',
+  'Awakening of the New Era: 1st Anniversary Tournament Cards',
+  'Romance Dawn Pre-Release Cards',
+  'Paramount War Pre-Release Cards',
+  'Pillars of Strength Pre-Release Cards',
+  'Kingdoms of Intrigue Pre-Release Cards',
+  'Awakening of the New Era Pre-Release Cards',
+  'Wings of the Captain Pre-Release Cards',
+  '500 Years in the Future Pre-Release Cards',
+  'Emperors in the New World Pre-Release Cards',
+  'Two Legends Pre-Release Cards',
+  'Carrying On His Will Pre-Release Cards',
+  'A Fist of Divine Speed Pre-Release Cards',
+  'Royal Blood Pre-Release Cards',
+  'Legacy of the Master Pre-Release Cards',
+  // Release event cards
+  'Romance Dawn Release Event Cards',
+  'Paramount War Release Event Cards',
+  'Pillars of Strength Release Event Cards',
+  'Kingdoms of Intrigue Release Event Cards',
+  'Awakening of the New Era Release Event Cards',
+  'Wings of the Captain Release Event Cards',
+  '500 Years in the Future Release Event Cards',
+  'Emperors in the New World Release Event Cards',
+  'Two Legends Release Event Cards',
+  'Carrying On His Will Release Event Cards',
+  'A Fist of Divine Speed Release Event Cards',
+  'Royal Blood Release Event Cards',
+  'Legacy of the Master Release Event Cards',
+];
+
+// Patterns that indicate name is actually a set name (not a card name)
+const SET_NAME_PATTERNS = [
+  /Pre-Release Cards$/,
+  /Release Event Cards$/,
+  /Tournament Cards$/,
+  /Promotion Cards$/,
+  /Demo Deck Cards$/,
+  /^Starter Deck/,
+  /^Ultra Deck/,
+  /^Extra Booster/,
+  /^Premium Booster/,
+  /Winner Pack/,
+  /Event Pack/,
+  /^Super Pre-Release/,
 ];
 
 function needsNameFix(name: string, setName?: string): boolean {
-  // Check rarity patterns
+  // Check rarity patterns (like "Super Rare, #OP08-106")
   if (GENERIC_NAME_PATTERNS.some(pattern => pattern.test(name))) {
     return true;
   }
@@ -58,6 +119,16 @@ function needsNameFix(name: string, setName?: string): boolean {
   
   // Check if card name is JUST a set name
   if (SET_NAMES.includes(name)) {
+    return true;
+  }
+  
+  // Check if name matches set name patterns
+  if (SET_NAME_PATTERNS.some(pattern => pattern.test(name))) {
+    return true;
+  }
+  
+  // Check if name is too short to be a real card name (likely truncated)
+  if (name.length < 3) {
     return true;
   }
   

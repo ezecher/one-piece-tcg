@@ -38,6 +38,19 @@ npm run dev update-sales -- --visible
 npm run dev refresh-listings -- --visible
 ```
 
+## 🚀 Most Used Commands
+
+```bash
+# Update sales for your collection only (fast! ~1 sec per card)
+npx tsx src/index.ts update-sales -c
+
+# Update sales for ALL cards (~24 min for 1454 cards)
+npx tsx src/index.ts update-sales
+
+# Refresh all listings (3 parallel workers)
+npm run dev refresh-listings -- --workers 3
+```
+
 ## CLI Commands
 
 ### Database

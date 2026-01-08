@@ -25,7 +25,12 @@ import {
   initializeDb,
   Card,
 } from '../db/client.js';
-import { getProductSales, NormalizedSale } from '../tcg/scrapeProductSales.js';
+import { 
+  getProductSales, 
+  NormalizedSale, 
+  GetProductSalesOptions,
+  AdaptiveRateLimiter,
+} from '../tcg/scrapeProductSales.js';
 
 export interface UpdateSalesOptions {
   productIds?: number[];     // Specific products to update (default: all)
@@ -35,6 +40,8 @@ export interface UpdateSalesOptions {
   useApi?: boolean;          // Try API first before UI scraping
   useChrome?: boolean;       // Use real Chrome profile (for login)
   workers?: number;          // Number of parallel browser tabs (1-4)
+  collectionOnly?: boolean;  // Only update collection items (much faster!)
+  fastMode?: boolean;        // Reduce delays for faster processing
 }
 
 /**
@@ -65,19 +72,20 @@ async function processCardSales(
   page: Page,
   card: Card,
   runId: number,
-  request?: any
-): Promise<{ salesFound: number; salesInserted: number; error: boolean }> {
+  request?: any,
+  salesOptions?: GetProductSalesOptions
+): Promise<{ salesFound: number; salesInserted: number; error: boolean; rateLimited: boolean }> {
   try {
-    const sales = await getProductSales(page, card.product_id, card.tcg_url, request);
+    const result = await getProductSales(page, card.product_id, card.tcg_url, request, salesOptions);
     
-    if (sales.length > 0) {
-      const inserted = saveSaleEvents(card.product_id, convertSalesForDb(sales), runId);
-      return { salesFound: sales.length, salesInserted: inserted, error: false };
+    if (result.sales.length > 0) {
+      const inserted = saveSaleEvents(card.product_id, convertSalesForDb(result.sales), runId);
+      return { salesFound: result.sales.length, salesInserted: inserted, error: false, rateLimited: false };
     }
     
-    return { salesFound: 0, salesInserted: 0, error: false };
+    return { salesFound: 0, salesInserted: 0, error: false, rateLimited: result.rateLimited };
   } catch {
-    return { salesFound: 0, salesInserted: 0, error: true };
+    return { salesFound: 0, salesInserted: 0, error: true, rateLimited: false };
   }
 }
 
@@ -93,13 +101,19 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
     useApi = true,
     useChrome = false,
     workers = 1,
+    collectionOnly = false,
+    fastMode = false,
   } = options;
   
   const numWorkers = Math.min(Math.max(1, workers), 4);
+  // Use shorter delay in fast mode (API can handle it)
+  const delayMs = fastMode ? 300 : REQUEST_DELAY_MS;
   
   console.log('\n=== Update Sales Job ===');
   console.log(`Use API: ${useApi}`);
   if (numWorkers > 1) console.log(`Workers: ${numWorkers} (parallel)`);
+  if (collectionOnly) console.log(`Mode: Collection only ⭐`);
+  if (fastMode) console.log(`Fast mode: ${delayMs}ms delay`);
   if (setName) console.log(`Set filter: ${setName}`);
   if (limit) console.log(`Limit: ${limit} products`);
   console.log('');
@@ -113,7 +127,11 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
   // Get cards to process
   let cards: Card[];
   
-  if (productIds && productIds.length > 0) {
+  if (collectionOnly) {
+    // Only process cards in the user's collection
+    cards = getAllCards().filter(c => c.in_collection > 0);
+    console.log(`Processing ${cards.length} collection items ⭐`);
+  } else if (productIds && productIds.length > 0) {
     cards = getAllCards().filter(c => productIds.includes(c.product_id));
     console.log(`Processing ${cards.length} specified products`);
   } else if (setName) {
@@ -170,6 +188,21 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
     const request = useApi ? context.request : undefined;
     const startTime = Date.now();
     
+    // Create adaptive rate limiter - starts fast, slows on 403s, speeds up on success
+    // 800ms = ~75 req/min, safely under TCGplayer's rate limit
+    const rateLimiter = new AdaptiveRateLimiter({
+      minDelay: fastMode ? 800 : 1000,
+      maxDelay: 15000,  // Max 15 seconds between requests when heavily rate limited
+      startDelay: fastMode ? 800 : delayMs,
+    });
+    
+    // In fast mode, skip slow UI fallback when API fails (just skip those cards)
+    const salesOptions: GetProductSalesOptions = { 
+      skipUiFallback: fastMode,
+      rateLimiter,
+    };
+    let skippedCount = 0;
+    
     if (numWorkers === 1) {
       // Single worker - detailed output
       const page = context.pages()[0] || await context.newPage();
@@ -178,7 +211,7 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
         const card = cards[i];
         process.stdout.write(`[${i + 1}/${cards.length}] ${card.name.substring(0, 40).padEnd(40)}...`);
         
-        const result = await processCardSales(page, card, runId, request);
+        const result = await processCardSales(page, card, runId, request, salesOptions);
         
         if (result.error) {
           console.log(' ERROR');
@@ -186,6 +219,11 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
         } else if (result.salesInserted > 0) {
           console.log(` +${result.salesInserted} new (${result.salesFound} total)`);
           totalSalesScraped += result.salesInserted;
+        } else if (result.rateLimited) {
+          console.log(' (rate limited - will retry slower)');
+          skippedCount++;
+        } else if (result.salesFound === 0 && fastMode) {
+          console.log(' (no sales)');
         } else {
           console.log(` ${result.salesFound} sales (0 new)`);
         }
@@ -196,12 +234,14 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
           sales_scraped: totalSalesScraped,
         });
         
+        // Use adaptive delay
         if (i < cards.length - 1) {
-          await page.waitForTimeout(REQUEST_DELAY_MS);
+          await rateLimiter.wait();
         }
       }
     } else {
       // Parallel workers - progress bar output
+      // Note: With rate limiting, parallel may not be faster since we need to respect limits
       const pages: Page[] = [];
       for (let i = 0; i < numWorkers; i++) {
         pages.push(await context.newPage());
@@ -211,9 +251,10 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
         const batch = cards.slice(i, Math.min(i + numWorkers, cards.length));
         
         const results = await Promise.all(
-          batch.map((card, idx) => processCardSales(pages[idx], card, runId, request))
+          batch.map((card, idx) => processCardSales(pages[idx], card, runId, request, salesOptions))
         );
         
+        let batchRateLimited = false;
         for (const result of results) {
           productsProcessed++;
           if (result.error) {
@@ -221,18 +262,24 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
           } else {
             totalSalesScraped += result.salesInserted;
           }
+          if (result.rateLimited) {
+            batchRateLimited = true;
+            skippedCount++;
+          }
         }
         
         const pct = Math.round((productsProcessed / cards.length) * 100);
-        process.stdout.write(`\r⏳ Progress: ${pct}% (${productsProcessed}/${cards.length}) | New sales: ${totalSalesScraped}   `);
+        const delayInfo = rateLimiter.isSlowed() ? ` | Delay: ${rateLimiter.getDelay()}ms` : '';
+        process.stdout.write(`\r⏳ Progress: ${pct}% (${productsProcessed}/${cards.length}) | New sales: ${totalSalesScraped}${delayInfo}   `);
         
         updateScrapeRun(runId, { 
           products_scraped: productsProcessed,
           sales_scraped: totalSalesScraped,
         });
         
+        // Use adaptive delay
         if (i + numWorkers < cards.length) {
-          await pages[0].waitForTimeout(100);
+          await rateLimiter.wait();
         }
       }
       console.log('');
@@ -244,6 +291,7 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
     console.log('\n=== Summary ===');
     console.log(`Products processed: ${productsProcessed}`);
     console.log(`New sales scraped: ${totalSalesScraped}`);
+    if (skippedCount > 0) console.log(`Skipped (API unavailable): ${skippedCount}`);
     console.log(`Errors: ${totalErrors}`);
     console.log(`Time: ${elapsed}s (${(cards.length / parseFloat(elapsed)).toFixed(1)} products/sec)`);
     

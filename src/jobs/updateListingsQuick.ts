@@ -11,6 +11,56 @@ import { join } from 'path';
 
 const USER_DATA_DIR = join(process.cwd(), '.browser-data');
 
+/**
+ * Adaptive rate limiter - starts fast, slows on 403s, speeds back up on success
+ */
+class AdaptiveRateLimiter {
+  private currentDelay: number;
+  private minDelay: number;
+  private maxDelay: number;
+  private successCount = 0;
+  private totalSuccesses = 0;
+  private readonly successThreshold = 10;  // Need 10 successes to speed up
+  private readonly speedUpFactor = 0.7;    // Reduce delay by 30%
+  private readonly slowDownFactor = 3;     // Triple delay on rate limit
+  
+  constructor(options: { minDelay?: number; maxDelay?: number; startDelay?: number } = {}) {
+    this.minDelay = options.minDelay ?? 100;
+    this.maxDelay = options.maxDelay ?? 10000;
+    this.currentDelay = options.startDelay ?? this.minDelay;
+  }
+  
+  recordSuccess(): void {
+    this.successCount++;
+    this.totalSuccesses++;
+    
+    // Only try to speed up if we've slowed down AND had consistent success
+    if (this.successCount >= this.successThreshold && this.currentDelay > this.minDelay) {
+      const oldDelay = this.currentDelay;
+      this.currentDelay = Math.max(Math.round(this.currentDelay * this.speedUpFactor), this.minDelay);
+      if (this.currentDelay !== oldDelay) {
+        console.log(`\n  📈 Rate eased after ${this.successCount} successes: ${oldDelay}ms → ${this.currentDelay}ms`);
+      }
+      this.successCount = 0;
+    }
+  }
+  
+  recordError(): void {
+    this.successCount = 0;
+    const oldDelay = this.currentDelay;
+    this.currentDelay = Math.min(this.currentDelay * this.slowDownFactor, this.maxDelay);
+    console.log(`\n  🐢 Rate limited after ${this.totalSuccesses} requests! Slowing: ${oldDelay}ms → ${this.currentDelay}ms`);
+  }
+  
+  getDelay(): number {
+    return this.currentDelay;
+  }
+  
+  isSlowedDown(): boolean {
+    return this.currentDelay > this.minDelay;
+  }
+}
+
 import { 
   getAllCards, 
   initializeDb,
@@ -146,7 +196,9 @@ async function fetchListingsViaApi(
     });
     
     if (!response.ok()) {
-      return { lowestPrice: null, lowestWithShipping: null, listingCount: 0, currentQuantity: 0, currentSellers: 0 };
+      // Use -1 as marker for rate limiting (403/429)
+      const isRateLimited = response.status() === 403 || response.status() === 429;
+      return { lowestPrice: null, lowestWithShipping: null, listingCount: isRateLimited ? -1 : 0, currentQuantity: 0, currentSellers: 0 };
     }
     
     const data = await response.json() as {
@@ -439,6 +491,7 @@ interface ProcessCardResult {
   uiFallback: boolean;
   usedCache: boolean;
   needsVerification: boolean;  // True if this looks like a new deal that should be verified
+  rateLimited: boolean;        // True if we hit rate limit (403/429)
   result: ListingResult | null;
 }
 
@@ -450,7 +503,8 @@ async function processCard(
   page: Page,
   card: Card,
   useApi: boolean,
-  minDealPct: number = 5  // If price is this % below last sale, flag for verification
+  minDealPct: number = 5,  // If price is this % below last sale, flag for verification
+  skipUiFallback: boolean = false  // If true, skip UI fallback on API failure
 ): Promise<ProcessCardResult> {
   try {
     let result: ListingResult;
@@ -461,6 +515,12 @@ async function processCard(
     
     if (useApi) {
       result = await fetchListingsViaApi(page, card.product_id, card.name, card.product_type);
+      
+      // Check for rate limiting (listingCount === -1 is our marker)
+      if (result.listingCount === -1) {
+        return { updated: false, apiSuccess: false, uiFallback: false, usedCache: false, needsVerification: false, rateLimited: true, result: null };
+      }
+      
       if (result.listingCount > 0) {
         apiSuccess = true;
         
@@ -480,7 +540,7 @@ async function processCard(
             }
           }
         }
-      } else {
+      } else if (!skipUiFallback) {
         result = await fetchListingsViaUI(page, card.tcg_url);
         if (result.listingCount > 0) uiFallback = true;
       }
@@ -498,12 +558,12 @@ async function processCard(
         result.currentSellers
       );
       
-      return { updated: true, apiSuccess, uiFallback, usedCache, needsVerification, result };
+      return { updated: true, apiSuccess, uiFallback, usedCache, needsVerification, rateLimited: false, result };
     }
     
-    return { updated: false, apiSuccess: false, uiFallback: false, usedCache: false, needsVerification: false, result: null };
+    return { updated: false, apiSuccess: false, uiFallback: false, usedCache: false, needsVerification: false, rateLimited: false, result: null };
   } catch {
-    return { updated: false, apiSuccess: false, uiFallback: false, usedCache: false, needsVerification: false, result: null };
+    return { updated: false, apiSuccess: false, uiFallback: false, usedCache: false, needsVerification: false, rateLimited: false, result: null };
   }
 }
 
@@ -624,13 +684,30 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
       // Single worker - original behavior with detailed output
       const page = context.pages()[0] || await context.newPage();
       
+      // Adaptive rate limiter - starts fast (150ms), slows on 403s
+      const rateLimiter = new AdaptiveRateLimiter({
+        minDelay: 150,
+        maxDelay: 10000,
+        startDelay: 150,
+      });
+      
       for (let i = 0; i < cards.length; i++) {
         const card = cards[i];
         process.stdout.write(`[${i + 1}/${cards.length}] ${card.name.substring(0, 40).padEnd(40)}...`);
         
         const res = await processCard(page, card, useApi);
         
+        // Handle rate limiting - retry with backoff
+        if (res.rateLimited) {
+          rateLimiter.recordError();
+          console.log(` (rate limited, retrying...)`);
+          await page.waitForTimeout(rateLimiter.getDelay());
+          i--; // Retry this card
+          continue;
+        }
+        
         if (res.updated && res.result) {
+          rateLimiter.recordSuccess();
           let flag = '';
           if (res.usedCache) {
             flag = ' 📦 CACHED';
@@ -649,16 +726,19 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
             console.log(` no NM`);
           }
           totalUpdated++;
+        } else if (res.apiSuccess || res.uiFallback) {
+          rateLimiter.recordSuccess();
+          console.log(' -');
         } else {
           console.log(' -');
         }
         
         if (res.apiSuccess) apiSuccesses++;
         if (res.uiFallback) uiFallbacks++;
-        if (!res.updated && !res.apiSuccess && !res.uiFallback) totalErrors++;
+        if (!res.updated && !res.apiSuccess && !res.uiFallback && !res.rateLimited) totalErrors++;
         
         if (i < cards.length - 1) {
-          await page.waitForTimeout(useApi ? 150 : REQUEST_DELAY_MS);
+          await page.waitForTimeout(useApi ? rateLimiter.getDelay() : REQUEST_DELAY_MS);
         }
       }
       
@@ -684,6 +764,13 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
       const verifyPage = pages[pages.length - 1];
       const scraperPages = numWorkers > 2 ? pages.slice(0, -1) : pages;
       
+      // Adaptive rate limiter - starts fast (100ms), slows on 403s
+      const rateLimiter = new AdaptiveRateLimiter({
+        minDelay: 100,
+        maxDelay: 10000,
+        startDelay: 100,
+      });
+      
       // Start verification worker in background
       let verifyRunning = true;
       const verifyWorker = (async () => {
@@ -698,20 +785,34 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
         }
       })();
       
+      // Track cards that need retry due to rate limiting
+      const retryQueue: Card[] = [];
+      
       // Process cards in parallel batches
       for (let i = 0; i < cards.length; i += scraperPages.length) {
         const batch = cards.slice(i, Math.min(i + scraperPages.length, cards.length));
         
         const results = await Promise.all(
-          batch.map((card, idx) => processCard(scraperPages[idx], card, useApi))
+          batch.map((card, idx) => processCard(scraperPages[idx], card, useApi, 5, true))
         );
         
+        let batchHadRateLimit = false;
         for (let j = 0; j < results.length; j++) {
           const res = results[j];
           const card = batch[j];
+          
+          if (res.rateLimited) {
+            batchHadRateLimit = true;
+            retryQueue.push(card);
+            continue;
+          }
+          
           processed++;
           if (res.updated) totalUpdated++;
-          if (res.apiSuccess) apiSuccesses++;
+          if (res.apiSuccess) {
+            apiSuccesses++;
+            rateLimiter.recordSuccess();
+          }
           if (res.uiFallback) uiFallbacks++;
           if (res.usedCache) cachedPrices++;
           if (!res.updated && !res.apiSuccess && !res.uiFallback) totalErrors++;
@@ -725,12 +826,45 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
           }
         }
         
+        // If we hit rate limits, slow down and process retry queue
+        if (batchHadRateLimit) {
+          rateLimiter.recordError();
+          const waitTime = rateLimiter.getDelay();
+          process.stdout.write(`\r⏳ Rate limited! Waiting ${waitTime}ms before retrying ${retryQueue.length} cards...                    `);
+          await scraperPages[0].waitForTimeout(waitTime);
+          
+          // Retry rate-limited cards one at a time with delay
+          while (retryQueue.length > 0) {
+            const card = retryQueue.shift()!;
+            const res = await processCard(scraperPages[0], card, useApi, 5, true);
+            
+            if (res.rateLimited) {
+              // Still rate limited, wait longer and put back in queue
+              rateLimiter.recordError();
+              retryQueue.unshift(card);
+              await scraperPages[0].waitForTimeout(rateLimiter.getDelay());
+              continue;
+            }
+            
+            processed++;
+            if (res.updated) totalUpdated++;
+            if (res.apiSuccess) {
+              apiSuccesses++;
+              rateLimiter.recordSuccess();
+            }
+            if (!res.updated && !res.apiSuccess) totalErrors++;
+            
+            await scraperPages[0].waitForTimeout(rateLimiter.getDelay());
+          }
+        }
+        
         const pct = Math.round((processed / cards.length) * 100);
+        const delayInfo = rateLimiter.isSlowedDown() ? ` | ⏱️ ${rateLimiter.getDelay()}ms` : '';
         const verifyStatus = verifyQueue.length > 0 ? ` | 🔍 Queue: ${verifyQueue.length}` : '';
-        process.stdout.write(`\r⏳ Progress: ${pct}% (${processed}/${cards.length}) | Updated: ${totalUpdated}${verifyStatus}   `);
+        process.stdout.write(`\r⏳ Progress: ${pct}% (${processed}/${cards.length}) | Updated: ${totalUpdated}${delayInfo}${verifyStatus}   `);
         
         if (i + scraperPages.length < cards.length) {
-          await scraperPages[0].waitForTimeout(useApi ? 100 : REQUEST_DELAY_MS);
+          await scraperPages[0].waitForTimeout(useApi ? rateLimiter.getDelay() : REQUEST_DELAY_MS);
         }
       }
       

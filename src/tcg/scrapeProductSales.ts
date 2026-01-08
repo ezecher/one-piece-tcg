@@ -7,6 +7,92 @@
 import { Page, APIRequestContext } from 'playwright';
 import { REQUEST_DELAY_MS, SALES_ENDPOINT_TEMPLATE, API_HEADERS } from '../config.js';
 
+/**
+ * Adaptive Rate Limiter
+ * Slows down when hitting 403s, speeds up when requests succeed
+ */
+export class AdaptiveRateLimiter {
+  private currentDelay: number;
+  private minDelay: number;
+  private maxDelay: number;
+  private consecutiveSuccesses: number = 0;
+  private consecutiveFailures: number = 0;
+  private successesNeededToSpeedUp: number = 3; // Need 3 successes to speed up (was 5)
+  
+  constructor(options: { minDelay?: number; maxDelay?: number; startDelay?: number } = {}) {
+    this.minDelay = options.minDelay ?? 650;  // 650ms = ~92 req/min, safely under TCGplayer's limit
+    this.maxDelay = options.maxDelay ?? 15000;
+    this.currentDelay = options.startDelay ?? this.minDelay;
+  }
+  
+  /**
+   * Record a successful request - speed up more aggressively
+   */
+  onSuccess(): void {
+    this.consecutiveFailures = 0;
+    this.consecutiveSuccesses++;
+    
+    // After enough successes, speed up
+    if (this.consecutiveSuccesses >= this.successesNeededToSpeedUp) {
+      const oldDelay = this.currentDelay;
+      // Reduce delay by 40% but not below minimum (was 20%)
+      this.currentDelay = Math.max(this.minDelay, Math.floor(this.currentDelay * 0.6));
+      if (this.currentDelay < oldDelay) {
+        console.log(`  📈 Rate limit eased: ${oldDelay}ms → ${this.currentDelay}ms`);
+      }
+      this.consecutiveSuccesses = 0;
+    }
+  }
+  
+  /**
+   * Record a rate limit (403) - slow down immediately
+   */
+  onRateLimit(): void {
+    this.consecutiveSuccesses = 0;
+    this.consecutiveFailures++;
+    
+    const oldDelay = this.currentDelay;
+    // Double the delay on each failure, up to max
+    this.currentDelay = Math.min(this.maxDelay, this.currentDelay * 2);
+    console.log(`  🐢 Rate limited! Slowing down: ${oldDelay}ms → ${this.currentDelay}ms (waiting ${this.currentDelay}ms before retry...)`);
+  }
+  
+  /**
+   * Get current delay in ms
+   */
+  getDelay(): number {
+    return this.currentDelay;
+  }
+  
+  /**
+   * Wait for the current delay
+   */
+  async wait(): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, this.currentDelay));
+  }
+  
+  /**
+   * Check if we're in a slow-down state
+   */
+  isSlowed(): boolean {
+    return this.currentDelay > this.minDelay * 2;
+  }
+}
+
+// Global rate limiter instance for shared state across calls
+let globalRateLimiter: AdaptiveRateLimiter | null = null;
+
+export function getGlobalRateLimiter(options?: { minDelay?: number; maxDelay?: number; startDelay?: number }): AdaptiveRateLimiter {
+  if (!globalRateLimiter) {
+    globalRateLimiter = new AdaptiveRateLimiter(options);
+  }
+  return globalRateLimiter;
+}
+
+export function resetGlobalRateLimiter(): void {
+  globalRateLimiter = null;
+}
+
 export interface RawSale {
   // These fields will be adjusted once you inspect the actual JSON response
   date: string;           // ISO date string or similar
@@ -248,80 +334,128 @@ export async function scrapeProductSalesFromUI(page: Page, productUrl: string): 
  */
 export async function fetchProductSalesFromAPI(
   productId: number,
-  request: APIRequestContext
-): Promise<NormalizedSale[]> {
+  request: APIRequestContext,
+  rateLimiter?: AdaptiveRateLimiter
+): Promise<{ sales: NormalizedSale[]; rateLimited: boolean }> {
   const url = SALES_ENDPOINT_TEMPLATE.replace('{productId}', String(productId));
   console.log(`Fetching sales from API: ${url}`);
   
-  try {
-    // TCGplayer uses POST for the sales endpoint
-    const response = await request.post(url, {
-      headers: {
-        ...API_HEADERS,
-        'content-type': 'application/json',
-      },
-      data: {
-        // The API might expect filtering parameters
-        // These are optional but might help get more data
-      },
-    });
-    
-    if (!response.ok()) {
-      console.warn(`API request failed for product ${productId}: ${response.status()}`);
-      return [];
+  const maxRetries = 3;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // TCGplayer uses POST for the sales endpoint
+      const response = await request.post(url, {
+        headers: {
+          ...API_HEADERS,
+          'content-type': 'application/json',
+        },
+        data: {
+          // The API might expect filtering parameters
+          // These are optional but might help get more data
+        },
+      });
+      
+      if (response.status() === 403) {
+        // Rate limited!
+        if (rateLimiter) {
+          rateLimiter.onRateLimit();
+          
+          if (attempt < maxRetries) {
+            // Wait with backoff before retrying
+            await rateLimiter.wait();
+            continue;
+          }
+        }
+        console.warn(`API rate limited for product ${productId} after ${maxRetries + 1} attempts`);
+        return { sales: [], rateLimited: true };
+      }
+      
+      if (!response.ok()) {
+        console.warn(`API request failed for product ${productId}: ${response.status()}`);
+        return { sales: [], rateLimited: false };
+      }
+      
+      const data = await response.json();
+      
+      // The structure will depend on the actual API response
+      // Adjust this based on what you see in DevTools
+      let rawSales: RawSale[] = [];
+      
+      if (Array.isArray(data)) {
+        rawSales = data;
+      } else if (data.sales && Array.isArray(data.sales)) {
+        rawSales = data.sales;
+      } else if (data.data && Array.isArray(data.data)) {
+        rawSales = data.data;
+      } else if (data.results && Array.isArray(data.results)) {
+        rawSales = data.results;
+      }
+      
+      const normalizedSales = rawSales.map(normalizeSale);
+      console.log(`Fetched ${normalizedSales.length} sales from API`);
+      
+      // Success! Let rate limiter know
+      if (rateLimiter) {
+        rateLimiter.onSuccess();
+      }
+      
+      return { sales: normalizedSales, rateLimited: false };
+      
+    } catch (error) {
+      console.error(`Error fetching sales from API for product ${productId}:`, error);
+      return { sales: [], rateLimited: false };
     }
-    
-    const data = await response.json();
-    
-    // The structure will depend on the actual API response
-    // Adjust this based on what you see in DevTools
-    let rawSales: RawSale[] = [];
-    
-    if (Array.isArray(data)) {
-      rawSales = data;
-    } else if (data.sales && Array.isArray(data.sales)) {
-      rawSales = data.sales;
-    } else if (data.data && Array.isArray(data.data)) {
-      rawSales = data.data;
-    } else if (data.results && Array.isArray(data.results)) {
-      rawSales = data.results;
-    }
-    
-    const normalizedSales = rawSales.map(normalizeSale);
-    console.log(`Fetched ${normalizedSales.length} sales from API`);
-    
-    return normalizedSales;
-    
-  } catch (error) {
-    console.error(`Error fetching sales from API for product ${productId}:`, error);
-    return [];
   }
+  
+  return { sales: [], rateLimited: true };
 }
 
 /**
  * Main function to get sales for a product
  * Tries API first, falls back to UI scraping
  */
+export interface GetProductSalesOptions {
+  skipUiFallback?: boolean;  // If true, don't fall back to slow UI scraping on API failure
+  rateLimiter?: AdaptiveRateLimiter;  // Adaptive rate limiter for handling 403s
+}
+
+export interface GetProductSalesResult {
+  sales: NormalizedSale[];
+  rateLimited: boolean;
+}
+
 export async function getProductSales(
   page: Page,
   productId: number,
   productUrl: string,
-  request?: APIRequestContext
-): Promise<NormalizedSale[]> {
+  request?: APIRequestContext,
+  options?: GetProductSalesOptions
+): Promise<GetProductSalesResult> {
+  const { skipUiFallback = false, rateLimiter } = options || {};
+  
   // Try API first if we have a request context
   if (request) {
     try {
-      const sales = await fetchProductSalesFromAPI(productId, request);
-      if (sales.length > 0) {
-        return sales;
+      const result = await fetchProductSalesFromAPI(productId, request, rateLimiter);
+      if (result.sales.length > 0) {
+        return { sales: result.sales, rateLimited: false };
+      }
+      // API returned empty - might be rate limited
+      if (result.rateLimited || skipUiFallback) {
+        return { sales: [], rateLimited: result.rateLimited };
       }
     } catch {
+      if (skipUiFallback) {
+        return { sales: [], rateLimited: false };
+      }
       console.log('API fetch failed, falling back to UI scraping...');
     }
   }
   
-  // Fall back to UI scraping
-  return scrapeProductSalesFromUI(page, productUrl);
+  // Fall back to UI scraping (slow)
+  const sales = await scrapeProductSalesFromUI(page, productUrl);
+  return { sales, rateLimited: false };
 }
 
 /**
@@ -331,28 +465,33 @@ export async function scrapeMultipleProductSales(
   page: Page,
   products: Array<{ productId: number; tcgUrl: string }>,
   request?: APIRequestContext,
-  onProgress?: (current: number, total: number, sales: NormalizedSale[]) => void
+  onProgress?: (current: number, total: number, sales: NormalizedSale[]) => void,
+  options?: GetProductSalesOptions
 ): Promise<Map<number, NormalizedSale[]>> {
   const results = new Map<number, NormalizedSale[]>();
+  const rateLimiter = options?.rateLimiter || new AdaptiveRateLimiter();
   
   for (let i = 0; i < products.length; i++) {
     const product = products[i];
     
     try {
-      const sales = await getProductSales(page, product.productId, product.tcgUrl, request);
-      results.set(product.productId, sales);
+      const result = await getProductSales(page, product.productId, product.tcgUrl, request, {
+        ...options,
+        rateLimiter,
+      });
+      results.set(product.productId, result.sales);
       
       if (onProgress) {
-        onProgress(i + 1, products.length, sales);
+        onProgress(i + 1, products.length, result.sales);
       }
     } catch (error) {
       console.error(`Failed to get sales for product ${product.productId}:`, error);
       results.set(product.productId, []);
     }
     
-    // Delay between requests
+    // Use adaptive delay between requests
     if (i < products.length - 1) {
-      await page.waitForTimeout(REQUEST_DELAY_MS);
+      await rateLimiter.wait();
     }
   }
   

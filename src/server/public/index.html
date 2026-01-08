@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
       --bg-dark: #0a0a0f;
@@ -307,8 +308,8 @@
       border: 1px solid var(--border);
       border-radius: 16px;
       width: 90%;
-      max-width: 800px;
-      max-height: 80vh;
+      max-width: 900px;
+      max-height: 85vh;
       overflow: auto;
     }
 
@@ -958,45 +959,64 @@
         return;
       }
 
-      // Calculate both values
-      const marketValue = collectionData.cards.reduce((sum, c) => sum + (c.market_price || 0), 0);
-      const lastSaleValue = collectionData.cards.reduce((sum, c) => sum + (c.last_sale_price || c.market_price || 0), 0);
+      // Calculate values with quantities
+      const totalQty = collectionData.cards.reduce((sum, c) => sum + (c.in_collection || 1), 0);
+      const marketValue = collectionData.cards.reduce((sum, c) => sum + ((c.market_price || 0) * (c.in_collection || 1)), 0);
+      const listingValue = collectionData.cards.reduce((sum, c) => sum + ((c.lowest_listing || 0) * (c.in_collection || 1)), 0);
+      const lastSaleValue = collectionData.cards.reduce((sum, c) => sum + ((c.last_sale_price || 0) * (c.in_collection || 1)), 0);
 
       container.innerHTML = `
-        <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; padding: 1rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
-          <div>
-            <span style="color: var(--text-secondary);">Collection:</span>
-            <span style="font-weight: 600; color: var(--accent-gold); margin-left: 0.5rem;">${collectionData.count} items</span>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+          <div style="background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border); padding: 1rem; text-align: center;">
+            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.25rem;">Items</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);">${totalQty}</div>
+            <div style="color: var(--text-secondary); font-size: 0.75rem;">(${collectionData.count} unique)</div>
           </div>
-          <div>
-            <span style="color: var(--text-secondary);">Market Value:</span>
-            <span style="font-weight: 600; color: var(--accent-gold); margin-left: 0.5rem;">${formatPrice(marketValue)}</span>
+          <div style="background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border); padding: 1rem; text-align: center;">
+            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.25rem;">Market Value</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);">${formatPrice(marketValue)}</div>
+            <div style="color: var(--text-secondary); font-size: 0.75rem;">TCGplayer estimate</div>
           </div>
-          <div>
-            <span style="color: var(--text-secondary);">Last Sale Value:</span>
-            <span style="font-weight: 600; color: var(--accent-purple); margin-left: 0.5rem;">${formatPrice(lastSaleValue)}</span>
-            <span style="color: var(--text-secondary); font-size: 0.8rem; margin-left: 0.25rem;">(more accurate)</span>
+          <div style="background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border); padding: 1rem; text-align: center;">
+            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.25rem;">Listing Value</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-green);">${formatPrice(listingValue)}</div>
+            <div style="color: var(--text-secondary); font-size: 0.75rem;">Lowest current listings</div>
+          </div>
+          <div style="background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border); padding: 1rem; text-align: center;">
+            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.25rem;">Last Sale Value</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-gold);">${formatPrice(lastSaleValue)}</div>
+            <div style="color: var(--text-secondary); font-size: 0.75rem;">Recent sold prices</div>
           </div>
         </div>
         <table>
           <thead>
             <tr>
               <th></th>
-              <th>Name</th>
-              <th>Set</th>
-              <th>Type</th>
-              <th>Market</th>
-              <th>Lowest Listing</th>
-              <th>Last Sale</th>
-              <th>Qty Avail</th>
-              <th>Sellers</th>
+              <th>QTY</th>
+              <th>NAME</th>
+              <th>SET</th>
+              <th>TYPE</th>
+              <th style="text-align: right;">MARKET</th>
+              <th style="text-align: right;">LISTING</th>
+              <th style="text-align: right;">LAST SALE</th>
+              <th style="text-align: right;">TOTAL</th>
             </tr>
           </thead>
           <tbody>
-            ${collectionData.cards.map(card => `
+            ${collectionData.cards.map(card => {
+              const qty = card.in_collection || 1;
+              // Use listing price for total if available, otherwise market price
+              const priceForTotal = card.lowest_listing || card.market_price || 0;
+              const total = priceForTotal * qty;
+              return `
               <tr>
                 <td>
-                  <button onclick="toggleCollection(${card.product_id}, event)" class="collection-btn in-collection" title="Remove from collection">⭐</button>
+                  <button onclick="window.removeFromCollection(${card.product_id})" class="collection-btn in-collection" title="Remove all">⭐</button>
+                </td>
+                <td style="white-space: nowrap;">
+                  <button onclick="window.setQty(${card.product_id}, ${qty - 1})" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); width: 24px; height: 24px; border-radius: 4px; cursor: pointer;">−</button>
+                  <span style="margin: 0 8px; font-weight: 600;">${qty}</span>
+                  <button onclick="window.setQty(${card.product_id}, ${qty + 1})" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); width: 24px; height: 24px; border-radius: 4px; cursor: pointer;">+</button>
                 </td>
                 <td>
                   <div class="card-name-container">
@@ -1006,22 +1026,17 @@
                 </td>
                 <td class="set-name">${escapeHtml(card.set_name || 'N/A')}</td>
                 <td><span class="badge ${card.product_type}">${card.product_type}</span></td>
-                <td class="price">${formatPrice(card.market_price)}</td>
-                <td class="price" style="color: ${card.lowest_listing && card.last_sale_price && card.lowest_listing < card.last_sale_price ? 'var(--accent-green)' : 'inherit'}">
-                  ${card.lowest_listing ? formatPrice(card.lowest_listing) : '-'}
-                  ${card.listing_count ? '<span style="color: var(--text-secondary); font-size: 0.75rem;"> (' + card.listing_count + ')</span>' : ''}
-                  ${card.lowest_listing && card.last_sale_price && card.lowest_listing < card.last_sale_price * 0.95 ? '<span style="color: var(--accent-green); font-size: 0.7rem; display: block;">🔥 DEAL</span>' : ''}
-                </td>
-                <td>
+                <td class="price" style="text-align: right;">${card.market_price ? formatPrice(card.market_price) : '—'}</td>
+                <td class="price" style="text-align: right; color: var(--accent-green);">${card.lowest_listing ? formatPrice(card.lowest_listing) : '—'}</td>
+                <td style="text-align: right;">
                   ${card.last_sale_price ? `
-                    <span class="price">${formatPrice(card.last_sale_price)}</span>
-                    <span style="color: var(--text-secondary); font-size: 0.75rem; display: block;">${new Date(card.last_sale_date).toLocaleDateString()}</span>
-                  ` : '-'}
+                    <span class="price" style="color: var(--accent-gold);">${formatPrice(card.last_sale_price)}</span>
+                    <span style="color: var(--text-secondary); font-size: 0.7rem; display: block;">${new Date(card.last_sale_date).toLocaleDateString()}</span>
+                  ` : '—'}
                 </td>
-                <td>${card.current_quantity || 0}</td>
-                <td>${card.current_sellers || 0}</td>
+                <td class="price" style="text-align: right; font-weight: 600;">${formatPrice(total)}</td>
               </tr>
-            `).join('')}
+            `}).join('')}
           </tbody>
         </table>
       `;
@@ -1064,42 +1079,198 @@
       }
     }
 
-    // Show sales modal
+    // Set collection quantity
+    async function setQty(productId, quantity) {
+      try {
+        await fetch(`/api/collection/${productId}/qty`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ quantity })
+        });
+        
+        // Reload collection data and re-render
+        collectionData = await fetch('/api/collection').then(r => r.json());
+        renderContent();
+      } catch (error) {
+        console.error('Error setting quantity:', error);
+      }
+    }
+    window.setQty = setQty;
+
+    // Remove from collection completely
+    async function removeFromCollection(productId) {
+      try {
+        await fetch(`/api/collection/${productId}`, { method: 'DELETE' });
+        collectionData = await fetch('/api/collection').then(r => r.json());
+        renderContent();
+      } catch (error) {
+        console.error('Error removing from collection:', error);
+      }
+    }
+    window.removeFromCollection = removeFromCollection;
+
+    // Price chart instance
+    let priceChart = null;
+    
+    // Show sales modal with chart
     async function showSales(productId, cardName) {
       document.getElementById('modal-title').textContent = cardName;
       document.getElementById('modal-body').innerHTML = '<div class="loading"><div class="spinner"></div>Loading sales...</div>';
       document.getElementById('modal').classList.add('active');
 
+      // Destroy existing chart if any
+      if (priceChart) {
+        priceChart.destroy();
+        priceChart = null;
+      }
+
       try {
-        const sales = await fetch(`/api/sales/${productId}`).then(r => r.json());
+        const sales = await fetch(`/api/sales/${productId}?limit=100`).then(r => r.json());
         
         if (sales.length === 0) {
           document.getElementById('modal-body').innerHTML = '<div class="empty">No sales data for this card.</div>';
           return;
         }
 
+        // Sort sales by date (oldest first for chart)
+        const sortedSales = [...sales].sort((a, b) => new Date(a.sold_at) - new Date(b.sold_at));
+        
+        // Prepare chart data
+        const chartLabels = sortedSales.map(s => new Date(s.sold_at).toLocaleDateString());
+        const chartPrices = sortedSales.map(s => s.price);
+        
+        // Calculate stats
+        const avgPrice = chartPrices.reduce((a, b) => a + b, 0) / chartPrices.length;
+        const minPrice = Math.min(...chartPrices);
+        const maxPrice = Math.max(...chartPrices);
+        const latestPrice = chartPrices[chartPrices.length - 1];
+        const firstPrice = chartPrices[0];
+        const priceChange = latestPrice - firstPrice;
+        const priceChangePercent = ((priceChange / firstPrice) * 100).toFixed(1);
+        const changeClass = priceChange >= 0 ? 'positive' : 'negative';
+        const changeIcon = priceChange >= 0 ? '📈' : '📉';
+
         document.getElementById('modal-body').innerHTML = `
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Price</th>
-                <th>Condition</th>
-                <th>Qty</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${sales.map(sale => `
+          <div style="margin-bottom: 1.5rem;">
+            <div style="display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+              <div style="background: var(--bg-dark); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                <div style="color: var(--text-secondary); font-size: 0.75rem; text-transform: uppercase;">Latest</div>
+                <div style="font-size: 1.25rem; font-weight: 600; color: var(--text-primary);">${formatPrice(latestPrice)}</div>
+              </div>
+              <div style="background: var(--bg-dark); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                <div style="color: var(--text-secondary); font-size: 0.75rem; text-transform: uppercase;">Average</div>
+                <div style="font-size: 1.25rem; font-weight: 600; color: var(--accent-blue);">${formatPrice(avgPrice)}</div>
+              </div>
+              <div style="background: var(--bg-dark); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                <div style="color: var(--text-secondary); font-size: 0.75rem; text-transform: uppercase;">Range</div>
+                <div style="font-size: 1.25rem; font-weight: 600; color: var(--text-primary);">${formatPrice(minPrice)} - ${formatPrice(maxPrice)}</div>
+              </div>
+              <div style="background: var(--bg-dark); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                <div style="color: var(--text-secondary); font-size: 0.75rem; text-transform: uppercase;">Trend ${changeIcon}</div>
+                <div style="font-size: 1.25rem; font-weight: 600;" class="${changeClass}">${priceChange >= 0 ? '+' : ''}${formatPrice(priceChange)} (${priceChangePercent}%)</div>
+              </div>
+            </div>
+            <div style="background: var(--bg-dark); padding: 1rem; border-radius: 8px; border: 1px solid var(--border); height: 250px;">
+              <canvas id="priceChart"></canvas>
+            </div>
+          </div>
+          <div style="max-height: 300px; overflow-y: auto;">
+            <table>
+              <thead>
                 <tr>
-                  <td>${new Date(sale.sold_at).toLocaleDateString()}</td>
-                  <td class="price">${formatPrice(sale.price)}</td>
-                  <td>${escapeHtml(sale.condition || 'N/A')}</td>
-                  <td>${sale.quantity}</td>
+                  <th>Date</th>
+                  <th>Price</th>
+                  <th>Condition</th>
+                  <th>Qty</th>
                 </tr>
-              `).join('')}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                ${sales.map(sale => `
+                  <tr>
+                    <td>${new Date(sale.sold_at).toLocaleDateString()}</td>
+                    <td class="price">${formatPrice(sale.price)}</td>
+                    <td>${escapeHtml(sale.condition || 'N/A')}</td>
+                    <td>${sale.quantity}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
         `;
+
+        // Create the chart
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        priceChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: chartLabels,
+            datasets: [{
+              label: 'Sale Price',
+              data: chartPrices,
+              borderColor: '#a855f7',
+              backgroundColor: 'rgba(168, 85, 247, 0.1)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.3,
+              pointRadius: 4,
+              pointBackgroundColor: '#a855f7',
+              pointBorderColor: '#fff',
+              pointBorderWidth: 1,
+              pointHoverRadius: 6,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+              intersect: false,
+              mode: 'index',
+            },
+            plugins: {
+              legend: {
+                display: false,
+              },
+              tooltip: {
+                backgroundColor: '#1a1a25',
+                titleColor: '#f0f0f5',
+                bodyColor: '#f0f0f5',
+                borderColor: '#2a2a3a',
+                borderWidth: 1,
+                padding: 12,
+                displayColors: false,
+                callbacks: {
+                  label: function(context) {
+                    return formatPrice(context.parsed.y);
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: {
+                  color: 'rgba(255, 255, 255, 0.05)',
+                },
+                ticks: {
+                  color: '#8888a0',
+                  maxRotation: 45,
+                  minRotation: 45,
+                  maxTicksLimit: 10,
+                }
+              },
+              y: {
+                grid: {
+                  color: 'rgba(255, 255, 255, 0.05)',
+                },
+                ticks: {
+                  color: '#8888a0',
+                  callback: function(value) {
+                    return '$' + value.toFixed(0);
+                  }
+                }
+              }
+            }
+          }
+        });
       } catch (error) {
         document.getElementById('modal-body').innerHTML = '<div class="empty">Error loading sales data.</div>';
       }
@@ -1107,6 +1278,11 @@
 
     function closeModal() {
       document.getElementById('modal').classList.remove('active');
+      // Clean up chart
+      if (priceChart) {
+        priceChart.destroy();
+        priceChart = null;
+      }
     }
 
     function escapeHtml(text) {

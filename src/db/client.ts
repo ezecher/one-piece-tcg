@@ -151,25 +151,73 @@ export function closeDb(): void {
 /**
  * Save or update a card
  */
+/**
+ * Check if a name looks like a set name (not a real card name)
+ */
+function isLikelySetName(name: string): boolean {
+  // Patterns that indicate this is a set name, not a card name
+  const setPatterns = [
+    /Pre-Release Cards$/,
+    /Release Event Cards$/,
+    /Tournament Cards$/,
+    /Promotion Cards$/,
+    /Demo Deck Cards$/,
+    /^Starter Deck/,
+    /^Ultra Deck/,
+    /^Extra Booster/,
+    /^Premium Booster/,
+    /Winner Pack/,
+    /Event Pack/,
+    /^Super Pre-Release/,
+    /^(Super Rare|Secret Rare|Common|Rare|Uncommon|Leader|Treasure Rare),/,
+  ];
+  return setPatterns.some(p => p.test(name));
+}
+
 export function saveCard(card: CardInput): number {
   const database = getDb();
+  
+  // Check if card already exists and has a good name
+  const existing = database.prepare(
+    'SELECT name FROM card WHERE product_id = ?'
+  ).get(card.product_id) as { name: string } | undefined;
+  
+  // Decide whether to update the name:
+  // - If card doesn't exist: use new name
+  // - If existing name is bad (looks like set name): use new name
+  // - If new name is bad (looks like set name): keep existing name
+  // - If both are good: prefer existing (already verified/fixed)
+  let nameToUse = card.name;
+  if (existing) {
+    const existingIsBad = isLikelySetName(existing.name);
+    const newIsBad = isLikelySetName(card.name);
+    
+    if (!existingIsBad && newIsBad) {
+      // Keep the good existing name
+      nameToUse = existing.name;
+    } else if (!existingIsBad && !newIsBad) {
+      // Both are good - keep existing (it may have been fixed)
+      nameToUse = existing.name;
+    }
+    // Otherwise use the new name (existing is bad, new might be better)
+  }
   
   const stmt = database.prepare(`
     INSERT INTO card (product_id, name, set_name, rarity, product_type, market_price, tcg_url, created_at, updated_at)
     VALUES (@product_id, @name, @set_name, @rarity, @product_type, @market_price, @tcg_url, datetime('now'), datetime('now'))
     ON CONFLICT(product_id) DO UPDATE SET
-      name = excluded.name,
-      set_name = COALESCE(excluded.set_name, card.set_name),
-      rarity = COALESCE(excluded.rarity, card.rarity),
-      product_type = excluded.product_type,
-      market_price = excluded.market_price,
-      tcg_url = excluded.tcg_url,
+      name = @name,
+      set_name = COALESCE(@set_name, card.set_name),
+      rarity = COALESCE(@rarity, card.rarity),
+      product_type = @product_type,
+      market_price = @market_price,
+      tcg_url = @tcg_url,
       updated_at = datetime('now')
   `);
   
   const result = stmt.run({
     product_id: card.product_id,
-    name: card.name,
+    name: nameToUse,
     set_name: card.set_name ?? null,
     rarity: card.rarity ?? null,
     product_type: card.product_type ?? 'single',
@@ -501,6 +549,56 @@ export function deleteCardsUnderPrice(minPrice: number): number {
 }
 
 /**
+ * Delete all non-One Piece cards from the database
+ * Identifies non-OP cards by checking if tcg_url contains 'one-piece'
+ */
+export function deleteNonOnePieceCards(): { deleted: number; sets: string[] } {
+  const database = getDb();
+  
+  // First, find all non-One Piece cards
+  const nonOpCards = database.prepare(`
+    SELECT id, product_id, name, set_name, tcg_url 
+    FROM card 
+    WHERE tcg_url NOT LIKE '%one-piece%'
+  `).all() as Card[];
+  
+  if (nonOpCards.length === 0) {
+    return { deleted: 0, sets: [] };
+  }
+  
+  // Get unique set names for reporting
+  const sets = [...new Set(nonOpCards.map(c => c.set_name).filter(Boolean))] as string[];
+  
+  // Delete associated sales first
+  const cardIds = nonOpCards.map(c => c.id);
+  const placeholders = cardIds.map(() => '?').join(',');
+  
+  const salesDeleted = database.prepare(`
+    DELETE FROM sale_event 
+    WHERE card_id IN (${placeholders})
+  `).run(...cardIds).changes;
+  
+  // Delete suspicious listings for these products
+  const productIds = nonOpCards.map(c => c.product_id);
+  const prodPlaceholders = productIds.map(() => '?').join(',');
+  
+  database.prepare(`
+    DELETE FROM suspicious_listing 
+    WHERE product_id IN (${prodPlaceholders})
+  `).run(...productIds);
+  
+  // Delete the cards
+  const cardsDeleted = database.prepare(`
+    DELETE FROM card 
+    WHERE tcg_url NOT LIKE '%one-piece%'
+  `).run().changes;
+  
+  console.log(`Deleted ${cardsDeleted} non-One Piece cards and ${salesDeleted} associated sales`);
+  
+  return { deleted: cardsDeleted, sets };
+}
+
+/**
  * Get card stats with 7-day and 30-day averages
  */
 export function getCardStats(minSales = 0): CardStats[] {
@@ -723,19 +821,31 @@ export function getTopVolume24h(limit = 20): Array<{ card_id: number; name: stri
 // ============ Collection/Watchlist Operations ============
 
 /**
- * Add a card to the collection by product ID
+ * Add to collection (increment by quantity, default 1)
  */
-export function addToCollection(productId: number): boolean {
+export function addToCollection(productId: number, quantity: number = 1): boolean {
   const database = getDb();
   const result = database.prepare(`
-    UPDATE card SET in_collection = 1, updated_at = datetime('now')
+    UPDATE card SET in_collection = in_collection + ?, updated_at = datetime('now')
     WHERE product_id = ?
-  `).run(productId);
+  `).run(quantity, productId);
   return result.changes > 0;
 }
 
 /**
- * Remove a card from the collection by product ID
+ * Set exact quantity in collection
+ */
+export function setCollectionQty(productId: number, quantity: number): boolean {
+  const database = getDb();
+  const result = database.prepare(`
+    UPDATE card SET in_collection = ?, updated_at = datetime('now')
+    WHERE product_id = ?
+  `).run(Math.max(0, quantity), productId);
+  return result.changes > 0;
+}
+
+/**
+ * Remove from collection (set to 0)
  */
 export function removeFromCollection(productId: number): boolean {
   const database = getDb();
@@ -747,13 +857,13 @@ export function removeFromCollection(productId: number): boolean {
 }
 
 /**
- * Toggle a card's collection status
+ * Toggle collection (add 1 if 0, remove if > 0)
  */
 export function toggleCollection(productId: number): boolean {
   const database = getDb();
   const result = database.prepare(`
     UPDATE card SET 
-      in_collection = CASE WHEN in_collection = 1 THEN 0 ELSE 1 END,
+      in_collection = CASE WHEN in_collection > 0 THEN 0 ELSE 1 END,
       updated_at = datetime('now')
     WHERE product_id = ?
   `).run(productId);
@@ -761,7 +871,7 @@ export function toggleCollection(productId: number): boolean {
 }
 
 /**
- * Get all cards in the collection
+ * Get all cards in the collection (in_collection > 0)
  */
 export function getCollectionCards(): CardWithLastSale[] {
   const database = getDb();
@@ -772,17 +882,17 @@ export function getCollectionCards(): CardWithLastSale[] {
       (SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) as last_sale_price,
       (SELECT condition FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) as last_sale_condition
     FROM card c
-    WHERE c.in_collection = 1
+    WHERE c.in_collection > 0
     ORDER BY c.market_price DESC NULLS LAST
   `).all() as CardWithLastSale[];
 }
 
 /**
- * Get collection count
+ * Get collection count (unique items)
  */
 export function getCollectionCount(): number {
   const database = getDb();
-  const result = database.prepare('SELECT COUNT(*) as count FROM card WHERE in_collection = 1').get() as { count: number };
+  const result = database.prepare('SELECT COUNT(*) as count FROM card WHERE in_collection > 0').get() as { count: number };
   return result.count;
 }
 

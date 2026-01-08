@@ -23,6 +23,7 @@ import {
   getCollectionCount,
   addToCollection,
   removeFromCollection,
+  setCollectionQty,
   Card,
 } from '../db/client.js';
 
@@ -180,6 +181,22 @@ app.delete('/api/collection/:productId', (req, res) => {
     const success = removeFromCollection(productId);
     if (success) {
       res.json({ success: true, message: 'Removed from collection' });
+    } else {
+      res.status(404).json({ success: false, message: 'Card not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Set collection quantity
+app.post('/api/collection/:productId/qty', (req, res) => {
+  try {
+    const productId = parseInt(req.params.productId);
+    const quantity = parseInt(req.body?.quantity) || 0;
+    const success = setCollectionQty(productId, quantity);
+    if (success) {
+      res.json({ success: true, quantity });
     } else {
       res.status(404).json({ success: false, message: 'Card not found' });
     }

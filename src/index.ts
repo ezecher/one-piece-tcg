@@ -18,6 +18,7 @@ import {
   getSalesForProduct,
   getRecentRuns,
   deleteCardsUnderPrice,
+  deleteNonOnePieceCards,
   addToCollection,
   removeFromCollection,
   getCollectionCards,
@@ -36,6 +37,7 @@ import { updateListingsQuick } from './jobs/updateListingsQuick.js';
 import { scrapeTopCards, scrapeOneSet } from './jobs/scrapeTopCards.js';
 import { fixCardNames } from './jobs/fixCardNames.js';
 import { verifyDeals } from './jobs/verifyDeals.js';
+import { discoverByPrice } from './jobs/discoverByPrice.js';
 import { ProductMode, ONE_PIECE_SETS, MAIN_BOOSTER_SETS } from './config.js';
 
 const USER_DATA_DIR = join(process.cwd(), '.browser-data');
@@ -113,6 +115,34 @@ program
       
       const remaining = countCards();
       console.log(`Remaining cards: ${remaining}`);
+    } finally {
+      closeDb();
+    }
+  });
+
+program
+  .command('db:remove-non-op')
+  .description('Remove all non-One Piece cards from database (Marvel, Pokemon, FF, etc.)')
+  .action(() => {
+    try {
+      initializeDb();
+      
+      console.log('\n🧹 Finding and removing non-One Piece cards...\n');
+      
+      const { deleted, sets } = deleteNonOnePieceCards();
+      
+      if (deleted === 0) {
+        console.log('No non-One Piece cards found.');
+      } else {
+        console.log(`\n✓ Removed ${deleted} non-One Piece cards from database.`);
+        if (sets.length > 0) {
+          console.log('\nRemoved sets:');
+          sets.forEach(s => console.log(`  - ${s}`));
+        }
+      }
+      
+      const remaining = countCards();
+      console.log(`\nRemaining cards: ${remaining}`);
     } finally {
       closeDb();
     }
@@ -287,6 +317,31 @@ program
     });
   });
 
+// ============ Price Discovery Commands ============
+
+program
+  .command('discover-by-price')
+  .description('Discover ALL valuable cards by price (not by set) - stops when prices hit threshold')
+  .option('-m, --mode <mode>', 'Product mode: singles, sealed, or all', 'singles')
+  .option('-p, --min-price <number>', 'Stop when prices drop below this amount', '10')
+  .option('--max-pages <number>', 'Safety limit on pages to scrape', '200')
+  .option('--headless', 'Run browser in headless mode')
+  .action(async (options) => {
+    try {
+      await discoverByPrice({
+        mode: options.mode as 'singles' | 'sealed' | 'all',
+        minPrice: parseFloat(options.minPrice),
+        maxPages: parseInt(options.maxPages, 10),
+        headless: options.headless === true,
+      });
+    } catch (error) {
+      console.error('Failed to discover products:', error);
+      process.exit(1);
+    } finally {
+      closeDb();
+    }
+  });
+
 // ============ Sales Commands ============
 
 program
@@ -296,6 +351,8 @@ program
   .option('-p, --product <id>', 'Specific product ID to update')
   .option('-s, --set <setName>', 'Filter by set name (e.g., "romance-dawn")')
   .option('-w, --workers <number>', 'Parallel workers 1-4 (default: 1)', '1')
+  .option('-c, --collection', 'Only update your collection items (much faster!)')
+  .option('-f, --fast', 'Fast mode - shorter delays (3x faster)')
   .option('--no-api', 'Skip API and use UI scraping only')
   .option('--headless', 'Run browser in headless mode (default: visible)')
   .option('--chrome', 'Use your Chrome profile (already logged in)')
@@ -311,6 +368,8 @@ program
           useApi: options.api !== false,
           useChrome: options.chrome,
           workers: parseInt(options.workers, 10),
+          collectionOnly: options.collection === true,
+          fastMode: options.fast === true,
         });
       }
     } catch (error) {
