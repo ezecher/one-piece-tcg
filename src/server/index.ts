@@ -182,7 +182,7 @@ app.get('/api/admin/users', async (req, res) => {
     const pool = getPool();
     const result = await pool.query(`
       SELECT id, email, display_name, created_at,
-        (SELECT COUNT(*) FROM user_collections WHERE user_id = users.id) as collection_count
+        (SELECT COUNT(*) FROM user_collection WHERE user_id = users.id) as collection_count
       FROM users 
       ORDER BY created_at DESC
     `);
