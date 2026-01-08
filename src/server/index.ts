@@ -32,6 +32,7 @@ import {
 } from '../db/client.js';
 import {
   initPostgres,
+  getPool,
   createUser,
   getUserByEmail,
   getUserCollection,
@@ -178,14 +179,13 @@ app.get('/api/admin/users', async (req, res) => {
   }
   
   try {
-    const client = await getPgClient();
-    const result = await client.query(`
+    const pool = getPool();
+    const result = await pool.query(`
       SELECT id, email, display_name, created_at,
         (SELECT COUNT(*) FROM user_collections WHERE user_id = users.id) as collection_count
       FROM users 
       ORDER BY created_at DESC
     `);
-    client.release();
     
     res.json({
       count: result.rows.length,
