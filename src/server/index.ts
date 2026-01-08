@@ -170,6 +170,33 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
   res.json({ user: req.user });
 });
 
+// Admin: List all users (protected by secret key)
+app.get('/api/admin/users', async (req, res) => {
+  const adminKey = req.query.key;
+  if (adminKey !== process.env.DB_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  try {
+    const client = await getPgClient();
+    const result = await client.query(`
+      SELECT id, email, display_name, created_at,
+        (SELECT COUNT(*) FROM user_collections WHERE user_id = users.id) as collection_count
+      FROM users 
+      ORDER BY created_at DESC
+    `);
+    client.release();
+    
+    res.json({
+      count: result.rows.length,
+      users: result.rows,
+    });
+  } catch (error) {
+    console.error('Admin users error:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
 // ============ User Collection Routes (Authenticated) ============
 
 // Get user's collection with card details

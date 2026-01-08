@@ -271,11 +271,19 @@ export function updateCardListings(
 }
 
 /**
- * Get a card by product ID
+ * Get a card by product ID (includes last sale info)
  */
-export function getCardByProductId(productId: number): Card | undefined {
+export function getCardByProductId(productId: number): CardWithLastSale | undefined {
   const database = getDb();
-  return database.prepare('SELECT * FROM card WHERE product_id = ?').get(productId) as Card | undefined;
+  return database.prepare(`
+    SELECT 
+      c.*,
+      (SELECT sold_at FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) as last_sale_date,
+      (SELECT price FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) as last_sale_price,
+      (SELECT condition FROM sale_event WHERE card_id = c.id ORDER BY sold_at DESC LIMIT 1) as last_sale_condition
+    FROM card c
+    WHERE c.product_id = ?
+  `).get(productId) as CardWithLastSale | undefined;
 }
 
 /**

@@ -343,18 +343,18 @@ export async function fetchProductSalesFromAPI(
   const maxRetries = 3;
   
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      // TCGplayer uses POST for the sales endpoint
-      const response = await request.post(url, {
-        headers: {
-          ...API_HEADERS,
-          'content-type': 'application/json',
-        },
-        data: {
-          // The API might expect filtering parameters
-          // These are optional but might help get more data
-        },
-      });
+  try {
+    // TCGplayer uses POST for the sales endpoint
+    const response = await request.post(url, {
+      headers: {
+        ...API_HEADERS,
+        'content-type': 'application/json',
+      },
+      data: {
+        // The API might expect filtering parameters
+        // These are optional but might help get more data
+      },
+    });
       
       if (response.status() === 403) {
         // Rate limited!
@@ -370,42 +370,42 @@ export async function fetchProductSalesFromAPI(
         console.warn(`API rate limited for product ${productId} after ${maxRetries + 1} attempts`);
         return { sales: [], rateLimited: true };
       }
-      
-      if (!response.ok()) {
-        console.warn(`API request failed for product ${productId}: ${response.status()}`);
+    
+    if (!response.ok()) {
+      console.warn(`API request failed for product ${productId}: ${response.status()}`);
         return { sales: [], rateLimited: false };
-      }
-      
-      const data = await response.json();
-      
-      // The structure will depend on the actual API response
-      // Adjust this based on what you see in DevTools
-      let rawSales: RawSale[] = [];
-      
-      if (Array.isArray(data)) {
-        rawSales = data;
-      } else if (data.sales && Array.isArray(data.sales)) {
-        rawSales = data.sales;
-      } else if (data.data && Array.isArray(data.data)) {
-        rawSales = data.data;
-      } else if (data.results && Array.isArray(data.results)) {
-        rawSales = data.results;
-      }
-      
-      const normalizedSales = rawSales.map(normalizeSale);
-      console.log(`Fetched ${normalizedSales.length} sales from API`);
-      
+    }
+    
+    const data = await response.json();
+    
+    // The structure will depend on the actual API response
+    // Adjust this based on what you see in DevTools
+    let rawSales: RawSale[] = [];
+    
+    if (Array.isArray(data)) {
+      rawSales = data;
+    } else if (data.sales && Array.isArray(data.sales)) {
+      rawSales = data.sales;
+    } else if (data.data && Array.isArray(data.data)) {
+      rawSales = data.data;
+    } else if (data.results && Array.isArray(data.results)) {
+      rawSales = data.results;
+    }
+    
+    const normalizedSales = rawSales.map(normalizeSale);
+    console.log(`Fetched ${normalizedSales.length} sales from API`);
+    
       // Success! Let rate limiter know
       if (rateLimiter) {
         rateLimiter.onSuccess();
       }
       
       return { sales: normalizedSales, rateLimited: false };
-      
-    } catch (error) {
-      console.error(`Error fetching sales from API for product ${productId}:`, error);
+    
+  } catch (error) {
+    console.error(`Error fetching sales from API for product ${productId}:`, error);
       return { sales: [], rateLimited: false };
-    }
+  }
   }
   
   return { sales: [], rateLimited: true };

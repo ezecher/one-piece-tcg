@@ -1175,26 +1175,26 @@
             </div>
           </div>
           <div style="max-height: 300px; overflow-y: auto;">
-            <table>
-              <thead>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Price</th>
+                <th>Condition</th>
+                <th>Qty</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sales.map(sale => `
                 <tr>
-                  <th>Date</th>
-                  <th>Price</th>
-                  <th>Condition</th>
-                  <th>Qty</th>
+                  <td>${new Date(sale.sold_at).toLocaleDateString()}</td>
+                  <td class="price">${formatPrice(sale.price)}</td>
+                  <td>${escapeHtml(sale.condition || 'N/A')}</td>
+                  <td>${sale.quantity}</td>
                 </tr>
-              </thead>
-              <tbody>
-                ${sales.map(sale => `
-                  <tr>
-                    <td>${new Date(sale.sold_at).toLocaleDateString()}</td>
-                    <td class="price">${formatPrice(sale.price)}</td>
-                    <td>${escapeHtml(sale.condition || 'N/A')}</td>
-                    <td>${sale.quantity}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
+              `).join('')}
+            </tbody>
+          </table>
           </div>
         `;
 
