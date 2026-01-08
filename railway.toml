@@ -2,8 +2,8 @@
 builder = "dockerfile"
 
 [deploy]
-healthcheckPath = "/api/summary"
-healthcheckTimeout = 100
+healthcheckPath = "/"
+healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
