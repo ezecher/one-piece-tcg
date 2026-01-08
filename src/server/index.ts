@@ -12,6 +12,7 @@ import { writeFileSync, readFileSync } from 'fs';
 import { DB_PATH } from '../config.js';
 import {
   initializeDb,
+  closeDb,
   getAllCards,
   getAllCardsWithLastSale,
   getCardStats,
@@ -224,12 +225,26 @@ app.post('/api/db/upload', (req, res) => {
   req.on('end', () => {
     try {
       const dbBuffer = Buffer.concat(chunks);
+      
+      // Close existing database connection
+      closeDb();
+      
+      // Write the new database file
       writeFileSync(DB_PATH, dbBuffer);
+      
+      // Reinitialize with the new database
+      initializeDb();
+      
+      const cardCount = countCards();
+      const salesCount = countSales();
+      
       res.json({ 
         success: true, 
-        message: 'Database uploaded successfully',
+        message: 'Database uploaded and reloaded successfully',
         size: dbBuffer.length,
-        path: DB_PATH
+        path: DB_PATH,
+        cards: cardCount,
+        sales: salesCount
       });
     } catch (error) {
       res.status(500).json({ error: String(error) });
