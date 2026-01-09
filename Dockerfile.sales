@@ -1,0 +1,34 @@
+# Cron job for daily SALES update
+FROM mcr.microsoft.com/playwright:v1.57.0-noble
+
+WORKDIR /app
+
+# Install build tools for native modules (better-sqlite3)
+RUN apt-get update && apt-get install -y build-essential python3 && rm -rf /var/lib/apt/lists/*
+
+# Create data directory for SQLite
+RUN mkdir -p /app/data
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci
+
+# Copy source and build
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+# Copy the scrape script
+COPY scripts/daily-sales.sh ./scripts/
+RUN chmod +x ./scripts/daily-sales.sh
+
+# Copy static files
+COPY src/server/public ./dist/server/public
+COPY src/db/schema.sql ./dist/db/schema.sql
+
+ENV NODE_ENV=production
+ENV DB_PATH=/app/data/tcg_sales.db
+
+# Run the sales script
+CMD ["./scripts/daily-sales.sh"]
+
