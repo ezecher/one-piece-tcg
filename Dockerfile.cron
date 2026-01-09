@@ -1,0 +1,31 @@
+# Cron job for daily scraping
+FROM mcr.microsoft.com/playwright:v1.49.1-noble
+
+WORKDIR /app
+
+# Create data directory for SQLite
+RUN mkdir -p /app/data
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci
+
+# Copy source and build
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+# Copy the scrape script
+COPY scripts/daily-scrape.sh ./scripts/
+RUN chmod +x ./scripts/daily-scrape.sh
+
+# Copy static files
+COPY src/server/public ./dist/server/public
+COPY src/db/schema.sql ./dist/db/schema.sql
+
+ENV NODE_ENV=production
+ENV DB_PATH=/app/data/tcg_sales.db
+
+# Run the scraper script
+CMD ["./scripts/daily-scrape.sh"]
+
