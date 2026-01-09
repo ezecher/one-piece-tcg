@@ -14,9 +14,9 @@ echo "📥 Downloading current database..."
 curl -s "${API_URL}/api/db/download?key=${DB_UPLOAD_KEY}" -o "$DB_FILE"
 echo "   Downloaded database: $(ls -lh $DB_FILE | awk '{print $5}')"
 
-# Step 2: Update sales for tracked cards
-echo "📊 Updating sales data..."
-node dist/index.js update-sales --collection 2>&1 || echo "Sales update completed with some errors"
+# Step 2: Update sales for ALL cards
+echo "📊 Updating sales data (all cards - this takes ~30-60 min)..."
+node dist/index.js update-sales 2>&1 || echo "Sales update completed with some errors"
 
 # Step 3: Refresh listings with 3 workers
 echo "📋 Refreshing listings..."
