@@ -18,12 +18,23 @@ echo "   Downloaded database: $(ls -lh $DB_FILE | awk '{print $5}')"
 echo "📊 Updating sales data (all cards - this takes ~30-60 min)..."
 node dist/index.js update-sales --headless 2>&1 || echo "Sales update completed with some errors"
 
-# Step 3: Refresh listings with 3 workers (headless mode for server)
+# Step 3: Upload after sales (so we don't lose data if listings fails)
+echo "📤 Uploading database after sales..."
+curl -X POST -H "Content-Type: application/octet-stream" \
+  --data-binary "@$DB_FILE" \
+  "${API_URL}/api/db/upload?key=${DB_UPLOAD_KEY}"
+
+# Step 4: Wait for rate limit to cool down (5 minutes)
+echo ""
+echo "⏳ Waiting 5 minutes for rate limit to reset..."
+sleep 300
+
+# Step 5: Refresh listings with 3 workers (headless mode for server)
 echo "📋 Refreshing listings..."
 node dist/index.js refresh-listings --workers 3 --headless 2>&1 || echo "Listings refresh completed with some errors"
 
-# Step 4: Upload updated database back to main service
-echo "📤 Uploading updated database..."
+# Step 6: Upload final database with listings
+echo "📤 Uploading final database..."
 curl -X POST -H "Content-Type: application/octet-stream" \
   --data-binary "@$DB_FILE" \
   "${API_URL}/api/db/upload?key=${DB_UPLOAD_KEY}"
