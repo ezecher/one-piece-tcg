@@ -14,13 +14,13 @@ echo "📥 Downloading current database..."
 curl -s "${API_URL}/api/db/download?key=${DB_UPLOAD_KEY}" -o "$DB_FILE"
 echo "   Downloaded database: $(ls -lh $DB_FILE | awk '{print $5}')"
 
-# Step 2: Update sales for ALL cards
+# Step 2: Update sales for ALL cards (headless mode for server)
 echo "📊 Updating sales data (all cards - this takes ~30-60 min)..."
-node dist/index.js update-sales 2>&1 || echo "Sales update completed with some errors"
+node dist/index.js update-sales --headless 2>&1 || echo "Sales update completed with some errors"
 
-# Step 3: Refresh listings with 3 workers
+# Step 3: Refresh listings with 3 workers (headless mode for server)
 echo "📋 Refreshing listings..."
-node dist/index.js refresh-listings --workers 3 2>&1 || echo "Listings refresh completed with some errors"
+node dist/index.js refresh-listings --workers 3 --headless 2>&1 || echo "Listings refresh completed with some errors"
 
 # Step 4: Upload updated database back to main service
 echo "📤 Uploading updated database..."
