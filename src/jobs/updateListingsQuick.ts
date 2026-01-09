@@ -764,11 +764,11 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
       const verifyPage = pages[pages.length - 1];
       const scraperPages = numWorkers > 2 ? pages.slice(0, -1) : pages;
       
-      // Adaptive rate limiter - starts fast (100ms), slows on 403s
+      // Adaptive rate limiter - starts slower (1000ms) to avoid immediate rate limits
       const rateLimiter = new AdaptiveRateLimiter({
-        minDelay: 100,
+        minDelay: 1000,
         maxDelay: 10000,
-        startDelay: 100,
+        startDelay: 1000,
       });
       
       // Start verification worker in background

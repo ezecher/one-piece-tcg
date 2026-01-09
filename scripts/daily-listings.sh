@@ -14,9 +14,13 @@ echo "📥 Downloading current database..."
 curl -s "${API_URL}/api/db/download?key=${DB_UPLOAD_KEY}" -o "$DB_FILE"
 echo "   Downloaded database: $(ls -lh $DB_FILE | awk '{print $5}')"
 
-# Step 2: Refresh listings with 3 workers
+# Step 2: Wait a bit to avoid immediate rate limiting
+echo "⏳ Waiting 2 minutes before starting (rate limit cooldown)..."
+sleep 120
+
+# Step 3: Refresh listings with 1 worker (slower but more reliable)
 echo "📋 Refreshing listings..."
-node dist/index.js refresh-listings --workers 3 --headless 2>&1 || echo "Listings refresh completed with some errors"
+node dist/index.js refresh-listings --workers 1 --headless 2>&1 || echo "Listings refresh completed with some errors"
 
 # Step 3: Upload updated database
 echo "📤 Uploading database..."
