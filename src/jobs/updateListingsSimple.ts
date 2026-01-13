@@ -109,24 +109,67 @@ class AdaptiveRateLimiter {
 async function fetchListingsViaUI(
   page: Page,
   productId: number,
-  tcgUrl: string
+  tcgUrl: string,
+  debug: boolean = false
 ): Promise<ListingResult> {
   try {
     const url = tcgUrl || `https://www.tcgplayer.com/product/${productId}`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+    await page.waitForTimeout(3000); // Wait for JS to render
+    
+    // Check if we hit a block page or captcha
+    const pageTitle = await page.title();
+    const pageUrl = page.url();
+    
+    if (debug) {
+      console.log(`\n  DEBUG: Title="${pageTitle}" URL=${pageUrl}`);
+    }
+    
+    // Check for common block indicators
+    if (pageTitle.includes('Access Denied') || pageTitle.includes('blocked') || 
+        pageUrl.includes('captcha') || pageUrl.includes('challenge')) {
+      if (debug) console.log('  DEBUG: Detected block/captcha page');
+      return { lowestPrice: null, listingCount: 0, currentQuantity: 0, rateLimited: true, fromUi: true };
+    }
+    
+    // Try to find the market price first (always visible)
+    const marketPriceEl = await page.$('[data-testid="product-price"]');
+    if (marketPriceEl) {
+      const text = await marketPriceEl.textContent();
+      if (text) {
+        const match = text.match(/\$?([\d,]+\.?\d*)/);
+        if (match) {
+          const price = parseFloat(match[1].replace(',', ''));
+          if (!isNaN(price) && price > 0) {
+            if (debug) console.log(`  DEBUG: Found market price: $${price}`);
+            return {
+              lowestPrice: price,
+              listingCount: 1,
+              currentQuantity: 0,
+              rateLimited: false,
+              fromUi: true,
+            };
+          }
+        }
+      }
+    }
     
     // Look for the lowest price in the listings
     const priceSelectors = [
       '.listing-item__listing-data__info__price',
       '[class*="listing"] [class*="price"]',
       '.product-details__market-price',
+      '.price-point__data',
+      '[class*="MarketPrice"]',
     ];
     
     let lowestPrice: number | null = null;
     
     for (const selector of priceSelectors) {
       const priceElements = await page.$$(selector);
+      if (debug && priceElements.length > 0) {
+        console.log(`  DEBUG: Found ${priceElements.length} elements with "${selector}"`);
+      }
       for (const el of priceElements) {
         const text = await el.textContent();
         if (text) {
@@ -144,6 +187,17 @@ async function fetchListingsViaUI(
       if (lowestPrice !== null) break;
     }
     
+    if (debug) {
+      if (lowestPrice) {
+        console.log(`  DEBUG: Found lowest price: $${lowestPrice}`);
+      } else {
+        console.log('  DEBUG: No prices found on page');
+        // Take a screenshot for debugging
+        const bodyText = await page.textContent('body');
+        console.log(`  DEBUG: Page body preview: ${bodyText?.substring(0, 200)}...`);
+      }
+    }
+    
     return {
       lowestPrice,
       listingCount: lowestPrice ? 1 : 0,
@@ -152,6 +206,7 @@ async function fetchListingsViaUI(
       fromUi: true,
     };
   } catch (error) {
+    if (debug) console.log(`  DEBUG: Error in UI scrape: ${error}`);
     return { lowestPrice: null, listingCount: 0, currentQuantity: 0, rateLimited: false };
   }
 }
@@ -249,7 +304,8 @@ async function processCardListings(
   page: Page,
   card: PgCard,
   rateLimiter: AdaptiveRateLimiter,
-  useUiFallback: boolean = true
+  useUiFallback: boolean = true,
+  debug: boolean = false
 ): Promise<{ updated: boolean; rateLimited: boolean; price: number | null; usedUi: boolean }> {
   // Try API first
   const result = await fetchListings(request, card.product_id);
@@ -257,7 +313,7 @@ async function processCardListings(
   if (result.rateLimited && useUiFallback) {
     // API rate limited - try UI scraping instead
     console.log(' (trying UI fallback...)');
-    const uiResult = await fetchListingsViaUI(page, card.product_id, card.tcg_url || '');
+    const uiResult = await fetchListingsViaUI(page, card.product_id, card.tcg_url || '', debug);
     
     if (uiResult.lowestPrice !== null) {
       await pgUpdateCardListings(
@@ -356,11 +412,26 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
   
   // Launch browser (needed for API context with proper cookies)
   console.log('Launching browser...');
-  const context = await chromium.launchPersistentContext(USER_DATA_DIR, {
-    headless,
-    viewport: { width: 1280, height: 800 },
-    ...(proxyConfig && { proxy: proxyConfig }),
-  });
+  
+  // When using proxy, use regular launch instead of persistent context
+  // This avoids JavaScript execution issues with proxies
+  let context;
+  if (proxyConfig) {
+    const browser = await chromium.launch({
+      headless,
+      proxy: proxyConfig,
+    });
+    context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+      javaScriptEnabled: true,
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    });
+  } else {
+    context = await chromium.launchPersistentContext(USER_DATA_DIR, {
+      headless,
+      viewport: { width: 1280, height: 800 },
+    });
+  }
   
   // Test proxy by checking our external IP
   const page = context.pages()[0] || await context.newPage();
@@ -404,7 +475,9 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
       const card = cards[i];
       process.stdout.write(`[${i + 1}/${cards.length}] ${card.name.substring(0, 40).padEnd(40)}...`);
       
-      const result = await processCardListings(request, page, card, rateLimiter, true);
+      // Enable debug for first 3 cards to see what's happening
+      const debug = i < 3;
+      const result = await processCardListings(request, page, card, rateLimiter, true, debug);
       
       if (result.usedUi) totalUiFallbacks++;
       
