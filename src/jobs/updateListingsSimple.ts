@@ -212,45 +212,48 @@ async function fetchListingsViaUI(
 }
 
 /**
- * Fetch listings via TCGplayer API
+ * Fetch listings via TCGplayer API with retry for network errors
  */
 async function fetchListings(
   request: APIRequestContext,
-  productId: number
+  productId: number,
+  retries: number = 2
 ): Promise<ListingResult> {
-  try {
-    const url = `https://mp-search-api.tcgplayer.com/v1/product/${productId}/listings?mpfev=4528&_t=${Date.now()}`;
-    
-    const response = await request.post(url, {
-      headers: {
-        'accept': 'application/json',
-        'content-type': 'application/json',
-        'origin': 'https://www.tcgplayer.com',
-        'referer': `https://www.tcgplayer.com/product/${productId}`,
-      },
-      data: {
-        filters: {
-          term: {
-            sellerStatus: 'Live',
-            channelId: 0,
-          },
-          range: {
-            quantity: { gte: 1 },
-          },
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const url = `https://mp-search-api.tcgplayer.com/v1/product/${productId}/listings?mpfev=4528&_t=${Date.now()}`;
+      
+      const response = await request.post(url, {
+        headers: {
+          'accept': 'application/json',
+          'content-type': 'application/json',
+          'origin': 'https://www.tcgplayer.com',
+          'referer': `https://www.tcgplayer.com/product/${productId}`,
         },
-        aggregations: ['listingType'],
-        context: {
-          shippingCountry: 'US',
-          cart: {},
+        data: {
+          filters: {
+            term: {
+              sellerStatus: 'Live',
+              channelId: 0,
+            },
+            range: {
+              quantity: { gte: 1 },
+            },
+          },
+          aggregations: ['listingType'],
+          context: {
+            shippingCountry: 'US',
+            cart: {},
+          },
+          size: 50,
         },
-        size: 50,
-      },
-    });
-    
-    if (!response.ok()) {
-      const isRateLimited = response.status() === 403 || response.status() === 429;
-      return { lowestPrice: null, listingCount: 0, currentQuantity: 0, rateLimited: isRateLimited };
-    }
+        timeout: 30000,
+      });
+      
+      if (!response.ok()) {
+        const isRateLimited = response.status() === 403 || response.status() === 429;
+        return { lowestPrice: null, listingCount: 0, currentQuantity: 0, rateLimited: isRateLimited };
+      }
     
     const data = await response.json() as {
       results?: Array<{
@@ -291,9 +294,17 @@ async function fetchListings(
       rateLimited: false,
     };
   } catch (error) {
-    console.error(`  Error fetching listings:`, error);
+    // Network error - retry if we have attempts left
+    if (attempt < retries) {
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); // Wait 1s, 2s, etc.
+      continue;
+    }
+    // Out of retries - return as no data (don't spam console with errors)
     return { lowestPrice: null, listingCount: 0, currentQuantity: 0, rateLimited: false };
   }
+  }
+  // Should never reach here
+  return { lowestPrice: null, listingCount: 0, currentQuantity: 0, rateLimited: false };
 }
 
 /**
@@ -461,9 +472,9 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
   }
   
   const request = context.request;
-  // Start faster now that proxy is working - API should be quick
-  // 500ms between requests, can slow down if rate limited
-  const rateLimiter = new AdaptiveRateLimiter(500, 300, 10000);
+  // Balanced speed - 800ms between requests to keep proxy stable
+  // Can slow down if rate limited, speed up after consistent success
+  const rateLimiter = new AdaptiveRateLimiter(800, 500, 10000);
   const startTime = Date.now();
   
   let totalUpdated = 0;
