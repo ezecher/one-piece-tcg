@@ -40,6 +40,10 @@ import {
   removeFromUserCollection,
   setUserCollectionQty,
   getUserCollectionProductIds,
+  getUserWatchlist,
+  addToUserWatchlist,
+  removeFromUserWatchlist,
+  updateUserWatchlistItem,
 } from '../db/postgres.js';
 import {
   hashPassword,
@@ -270,6 +274,75 @@ app.put('/api/user/collection/:productId', requireAuth, async (req, res) => {
     res.json({ success: true, quantity });
   } catch (error) {
     console.error('Set quantity error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// ============ User Watchlist Routes ============
+
+// Get user's watchlist with card details
+app.get('/api/user/watchlist', requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId!;
+    const watchlistItems = await getUserWatchlist(userId);
+    
+    // Get full card details for each watchlist item
+    const items = watchlistItems.map(item => {
+      const card = getCardByProductId(item.product_id);
+      return card ? {
+        ...card,
+        target_price: item.target_price,
+        alerts_enabled: item.alerts_enabled,
+      } : null;
+    }).filter(Boolean);
+    
+    res.json({ items });
+  } catch (error) {
+    console.error('Get watchlist error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Add to user's watchlist
+app.post('/api/user/watchlist/:productId', requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId!;
+    const productId = parseInt(req.params.productId);
+    const targetPrice = req.body.target_price;
+    
+    await addToUserWatchlist(userId, productId, targetPrice);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Add to watchlist error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Remove from user's watchlist
+app.delete('/api/user/watchlist/:productId', requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId!;
+    const productId = parseInt(req.params.productId);
+    
+    await removeFromUserWatchlist(userId, productId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Remove from watchlist error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Update watchlist item (target price, alerts enabled)
+app.put('/api/user/watchlist/:productId', requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId!;
+    const productId = parseInt(req.params.productId);
+    const { target_price, alerts_enabled } = req.body;
+    
+    await updateUserWatchlistItem(userId, productId, { target_price, alerts_enabled });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update watchlist error:', error);
     res.status(500).json({ error: String(error) });
   }
 });

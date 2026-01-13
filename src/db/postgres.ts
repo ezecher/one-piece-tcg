@@ -62,6 +62,24 @@ export async function initPostgres(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_user_collection_user_id ON user_collection(user_id)
     `);
     
+    // Create user_watchlist table for price alerts
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_watchlist (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        product_id INTEGER NOT NULL,
+        target_price DECIMAL(10, 2),
+        alerts_enabled BOOLEAN DEFAULT true,
+        added_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id, product_id)
+      )
+    `);
+    
+    // Create index for watchlist lookups
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_watchlist_user_id ON user_watchlist(user_id)
+    `);
+    
     console.log('PostgreSQL tables initialized');
   } finally {
     client.release();
@@ -170,6 +188,84 @@ export async function getUserCollection(userId: number): Promise<UserCollectionI
 export async function getUserCollectionProductIds(userId: number): Promise<number[]> {
   const result = await getPool().query<{ product_id: number }>(
     'SELECT product_id FROM user_collection WHERE user_id = $1',
+    [userId]
+  );
+  return result.rows.map(r => r.product_id);
+}
+
+// ============ User Watchlist Operations ============
+
+export interface UserWatchlistItem {
+  id: number;
+  user_id: number;
+  product_id: number;
+  target_price: number | null;
+  alerts_enabled: boolean;
+  added_at: Date;
+}
+
+export async function addToUserWatchlist(
+  userId: number, 
+  productId: number, 
+  targetPrice?: number
+): Promise<UserWatchlistItem> {
+  const result = await getPool().query<UserWatchlistItem>(
+    `INSERT INTO user_watchlist (user_id, product_id, target_price)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (user_id, product_id) 
+     DO UPDATE SET target_price = COALESCE($3, user_watchlist.target_price)
+     RETURNING *`,
+    [userId, productId, targetPrice || null]
+  );
+  return result.rows[0];
+}
+
+export async function removeFromUserWatchlist(userId: number, productId: number): Promise<boolean> {
+  const result = await getPool().query(
+    'DELETE FROM user_watchlist WHERE user_id = $1 AND product_id = $2',
+    [userId, productId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function updateUserWatchlistItem(
+  userId: number, 
+  productId: number, 
+  data: { target_price?: number; alerts_enabled?: boolean }
+): Promise<boolean> {
+  const updates: string[] = [];
+  const values: any[] = [userId, productId];
+  let paramIndex = 3;
+  
+  if (data.target_price !== undefined) {
+    updates.push(`target_price = $${paramIndex++}`);
+    values.push(data.target_price);
+  }
+  if (data.alerts_enabled !== undefined) {
+    updates.push(`alerts_enabled = $${paramIndex++}`);
+    values.push(data.alerts_enabled);
+  }
+  
+  if (updates.length === 0) return false;
+  
+  const result = await getPool().query(
+    `UPDATE user_watchlist SET ${updates.join(', ')} WHERE user_id = $1 AND product_id = $2`,
+    values
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function getUserWatchlist(userId: number): Promise<UserWatchlistItem[]> {
+  const result = await getPool().query<UserWatchlistItem>(
+    'SELECT * FROM user_watchlist WHERE user_id = $1 ORDER BY added_at DESC',
+    [userId]
+  );
+  return result.rows;
+}
+
+export async function getUserWatchlistProductIds(userId: number): Promise<number[]> {
+  const result = await getPool().query<{ product_id: number }>(
+    'SELECT product_id FROM user_watchlist WHERE user_id = $1',
     [userId]
   );
   return result.rows.map(r => r.product_id);
