@@ -8,7 +8,7 @@ cd /app
 
 # Just run the scraper - it writes directly to PostgreSQL
 echo "📋 Refreshing listings..."
-node dist/index.js refresh-listings --workers 1 --headless 2>&1 || echo "Listings refresh completed with some errors"
+node dist/index.js refresh-listings --headless --workers 3 2>&1 || echo "Listings refresh completed with some errors"
 
 echo ""
 echo "✅ Listings update completed at $(date)"

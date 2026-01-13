@@ -225,7 +225,8 @@ async function fetchListings(
   
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const url = `https://mp-search-api.tcgplayer.com/v1/product/${productId}/listings?mpfev=4528&_t=${Date.now()}`;
+      // TCGplayer listings API - POST endpoint
+      const url = `https://mp-search-api.tcgplayer.com/v1/product/${productId}/listings?mpfev=4528`;
       
       const response = await request.post(url, {
         headers: {
@@ -236,19 +237,10 @@ async function fetchListings(
         },
         data: {
           filters: {
-            term: {
-              sellerStatus: 'Live',
-              channelId: 0,
-            },
-            range: {
-              quantity: { gte: 1 },
-            },
+            term: { sellerStatus: 'Live', channelId: 0 },
+            range: { quantity: { gte: 1 } },
           },
-          aggregations: ['listingType'],
-          context: {
-            shippingCountry: 'US',
-            cart: {},
-          },
+          context: { shippingCountry: 'US', cart: {} },
           size: 50,
         },
         timeout: 30000,
@@ -278,6 +270,7 @@ async function fetchListings(
       }>;
     };
     
+    // Response is nested: data.results[0].results contains the listings
     const listingsWrapper = data.results?.[0];
     const listings = listingsWrapper?.results || [];
     

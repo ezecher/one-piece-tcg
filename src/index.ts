@@ -404,19 +404,43 @@ program
 
 program
   .command('refresh-listings')
-  .description('Quick API-based listings refresh (simple and reliable)')
+  .description('Quick API-based listings refresh with parallel workers (for local use)')
   .option('-s, --set <name>', 'Filter by set name')
   .option('-l, --limit <number>', 'Max products to process')
   .option('-p, --product <id>', 'Specific product ID to refresh')
-  .option('-w, --workers <number>', 'Parallel workers (ignored - always uses 1)', '1')
+  .option('-w, --workers <number>', 'Parallel workers (1-4)', '3')
   .option('--headless', 'Run browser in headless mode (default: visible)')
+  .action(async (options) => {
+    try {
+      await updateListingsQuick({
+        setName: options.set,
+        limit: options.limit ? parseInt(options.limit, 10) : undefined,
+        productIds: options.product ? [parseInt(options.product, 10)] : undefined,
+        headless: options.headless === true,
+        workers: options.workers ? parseInt(options.workers, 10) : 3,
+        useApi: true,
+      });
+    } catch (error) {
+      console.error('Failed to refresh listings:', error);
+      process.exit(1);
+    } finally {
+      closeDb();
+    }
+  });
+
+// Simplified listings scraper for cron jobs (with proxy support)
+program
+  .command('refresh-listings-cron')
+  .description('Simple listings refresh for Railway cron (with proxy support)')
+  .option('-s, --set <name>', 'Filter by set name')
+  .option('-l, --limit <number>', 'Max products to process')
+  .option('--headless', 'Run browser in headless mode')
   .option('--no-proxy', 'Disable proxy even if configured')
   .action(async (options) => {
     try {
       await updateListingsSimple({
         setName: options.set,
         limit: options.limit ? parseInt(options.limit, 10) : undefined,
-        productIds: options.product ? [parseInt(options.product, 10)] : undefined,
         headless: options.headless === true,
         useProxy: options.proxy !== false,
       });

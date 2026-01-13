@@ -11,72 +11,12 @@ import { join } from 'path';
 
 const USER_DATA_DIR = join(process.cwd(), '.browser-data');
 
-/**
- * Adaptive rate limiter - starts fast, slows on 403s, speeds back up on success
- */
-class AdaptiveRateLimiter {
-  private currentDelay: number;
-  private minDelay: number;
-  private maxDelay: number;
-  private successCount = 0;
-  private totalSuccesses = 0;
-  private readonly successThreshold = 10;  // Need 10 successes to speed up
-  private readonly speedUpFactor = 0.7;    // Reduce delay by 30%
-  private readonly slowDownFactor = 3;     // Triple delay on rate limit
-  
-  constructor(options: { minDelay?: number; maxDelay?: number; startDelay?: number } = {}) {
-    this.minDelay = options.minDelay ?? 100;
-    this.maxDelay = options.maxDelay ?? 10000;
-    this.currentDelay = options.startDelay ?? this.minDelay;
-  }
-  
-  recordSuccess(): void {
-    this.successCount++;
-    this.totalSuccesses++;
-    
-    // Only try to speed up if we've slowed down AND had consistent success
-    if (this.successCount >= this.successThreshold && this.currentDelay > this.minDelay) {
-      const oldDelay = this.currentDelay;
-      this.currentDelay = Math.max(Math.round(this.currentDelay * this.speedUpFactor), this.minDelay);
-      if (this.currentDelay !== oldDelay) {
-        console.log(`\n  📈 Rate eased after ${this.successCount} successes: ${oldDelay}ms → ${this.currentDelay}ms`);
-      }
-      this.successCount = 0;
-    }
-  }
-  
-  recordError(): void {
-    this.successCount = 0;
-    const oldDelay = this.currentDelay;
-    this.currentDelay = Math.min(this.currentDelay * this.slowDownFactor, this.maxDelay);
-    console.log(`\n  🐢 Rate limited after ${this.totalSuccesses} requests! Slowing: ${oldDelay}ms → ${this.currentDelay}ms`);
-  }
-  
-  getDelay(): number {
-    return this.currentDelay;
-  }
-  
-  isSlowedDown(): boolean {
-    return this.currentDelay > this.minDelay;
-  }
-}
-
 import { 
   initPostgres,
   pgGetAllCards,
   pgUpdateCardListings,
   PgCard,
 } from '../db/postgres.js';
-
-// These SQLite-specific functions are no longer used - simplified for PostgreSQL
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function isSuspiciousPrice(_productId: number, _price: number): boolean { return false; }
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function getCachedVerifiedPrice(_productId: number, _apiPrice: number): number | null { return null; }
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function getLastSalePrice(_productId: number): number | null { return null; }
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function recordSuspiciousListing(_productId: number, _apiPrice: number, _verifiedPrice: number, _lastSale: number, _discountClaimed: number, _discountActual: number): void {}
 
 export interface UpdateListingsOptions {
   productIds?: number[];     // Specific products to update
@@ -202,9 +142,7 @@ async function fetchListingsViaApi(
     });
     
     if (!response.ok()) {
-      // Use -1 as marker for rate limiting (403/429)
-      const isRateLimited = response.status() === 403 || response.status() === 429;
-      return { lowestPrice: null, lowestWithShipping: null, listingCount: isRateLimited ? -1 : 0, currentQuantity: 0, currentSellers: 0 };
+      return { lowestPrice: null, lowestWithShipping: null, listingCount: 0, currentQuantity: 0, currentSellers: 0 };
     }
     
     const data = await response.json() as {
@@ -310,7 +248,6 @@ async function fetchListingsViaApi(
       
       const saneFiltered = filtered.filter((item: any) => item.price >= minReasonablePrice);
       if (saneFiltered.length < filtered.length && saneFiltered.length > 0) {
-        const removed = filtered.length - saneFiltered.length;
         // Only filter if we still have results
         filtered.length = 0;
         filtered.push(...saneFiltered);
@@ -491,67 +428,31 @@ async function fetchListingsViaUI(
   }
 }
 
-interface ProcessCardResult {
-  updated: boolean;
-  apiSuccess: boolean;
-  uiFallback: boolean;
-  usedCache: boolean;
-  needsVerification: boolean;  // True if this looks like a new deal that should be verified
-  rateLimited: boolean;        // True if we hit rate limit (403/429)
-  result: ListingResult | null;
-}
-
 /**
  * Process a single card and return results
- * If API returns a known-bad price, uses cached verified price instead
  */
 async function processCard(
   page: Page,
   card: PgCard,
-  useApi: boolean,
-  minDealPct: number = 5,  // If price is this % below last sale, flag for verification
-  skipUiFallback: boolean = false  // If true, skip UI fallback on API failure
-): Promise<ProcessCardResult> {
+  useApi: boolean
+): Promise<{ updated: boolean; apiSuccess: boolean; uiFallback: boolean; result: ListingResult | null }> {
   try {
     let result: ListingResult;
     let apiSuccess = false;
     let uiFallback = false;
-    let usedCache = false;
-    let needsVerification = false;
     
     if (useApi) {
       result = await fetchListingsViaApi(page, card.product_id, card.name, card.product_type);
-      
-      // Check for rate limiting (listingCount === -1 is our marker)
-      if (result.listingCount === -1) {
-        return { updated: false, apiSuccess: false, uiFallback: false, usedCache: false, needsVerification: false, rateLimited: true, result: null };
-      }
-      
       if (result.listingCount > 0) {
         apiSuccess = true;
-        
-        // Check if this API price is known to be stale
-        if (result.lowestPrice !== null) {
-          const cachedPrice = getCachedVerifiedPrice(card.product_id, result.lowestPrice);
-          if (cachedPrice !== null) {
-            // We've seen this exact stale price before - use the cached verified price
-            result.lowestPrice = cachedPrice;
-            result.lowestWithShipping = cachedPrice;
-            usedCache = true;
-          } else {
-            // Check if this looks like a deal that needs verification
-            const lastSale = getLastSalePrice(card.product_id);
-            if (lastSale !== null && result.lowestPrice < lastSale * (1 - minDealPct / 100)) {
-              needsVerification = true;
-            }
-          }
-        }
-      } else if (!skipUiFallback && card.tcg_url) {
+      } else if (card.tcg_url) {
         result = await fetchListingsViaUI(page, card.tcg_url);
         if (result.listingCount > 0) uiFallback = true;
       }
     } else if (card.tcg_url) {
       result = await fetchListingsViaUI(page, card.tcg_url);
+    } else {
+      return { updated: false, apiSuccess: false, uiFallback: false, result: null };
     }
     
     if (result.lowestPrice !== null || result.currentQuantity > 0) {
@@ -563,12 +464,12 @@ async function processCard(
         result.currentQuantity
       );
       
-      return { updated: true, apiSuccess, uiFallback, usedCache, needsVerification, rateLimited: false, result };
+      return { updated: true, apiSuccess, uiFallback, result };
     }
     
-    return { updated: false, apiSuccess: false, uiFallback: false, usedCache: false, needsVerification: false, rateLimited: false, result: null };
+    return { updated: false, apiSuccess, uiFallback, result: null };
   } catch {
-    return { updated: false, apiSuccess: false, uiFallback: false, usedCache: false, needsVerification: false, rateLimited: false, result: null };
+    return { updated: false, apiSuccess: false, uiFallback: false, result: null };
   }
 }
 
@@ -637,65 +538,11 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
     let totalErrors = 0;
     let apiSuccesses = 0;
     let uiFallbacks = 0;
-    let cachedPrices = 0;
     let processed = 0;
-    
-    // Queue for cards that need real-time verification
-    const verifyQueue: { card: PgCard; apiPrice: number; lastSale: number }[] = [];
-    let verifiedCount = 0;
-    let verifiedFake = 0;
-    
-    // Verifier function - runs in parallel with main scraper
-    async function verifyDeal(verifyPage: Page, card: PgCard, apiPrice: number, lastSale: number) {
-      try {
-        if (!card.tcg_url) return; // Skip if no URL
-        const uiResult = await fetchListingsViaUI(verifyPage, card.tcg_url);
-        const verifiedPrice = uiResult.lowestPrice;
-        
-        if (verifiedPrice !== null) {
-          // Calculate if it's still a deal
-          const discountClaimed = ((lastSale - apiPrice) / lastSale) * 100;
-          const discountActual = ((lastSale - verifiedPrice) / lastSale) * 100;
-          
-          if (Math.abs(apiPrice - verifiedPrice) > 0.50) {
-            // API was wrong - record this and update with correct price
-            recordSuspiciousListing(
-              card.product_id,
-              apiPrice,
-              verifiedPrice,
-              lastSale,
-              discountClaimed,
-              discountActual
-            );
-            
-            // Update DB with verified price
-            await pgUpdateCardListings(
-              card.product_id,
-              verifiedPrice,
-              verifiedPrice,
-              uiResult.listingCount,
-              uiResult.currentQuantity
-            );
-            
-            verifiedFake++;
-          }
-        }
-        verifiedCount++;
-      } catch {
-        // Verification failed, leave API price as-is
-      }
-    }
     
     if (numWorkers === 1) {
       // Single worker - original behavior with detailed output
       const page = context.pages()[0] || await context.newPage();
-      
-      // Adaptive rate limiter - starts at 1000ms like sales scraper
-      const rateLimiter = new AdaptiveRateLimiter({
-        minDelay: 500,
-        maxDelay: 10000,
-        startDelay: 1000,  // Same as sales scraper
-      });
       
       for (let i = 0; i < cards.length; i++) {
         const card = cards[i];
@@ -703,184 +550,56 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
         
         const res = await processCard(page, card, useApi);
         
-        // Handle rate limiting - retry with backoff
-        if (res.rateLimited) {
-          rateLimiter.recordError();
-          console.log(` (rate limited, retrying...)`);
-          await page.waitForTimeout(rateLimiter.getDelay());
-          i--; // Retry this card
-          continue;
-        }
-        
         if (res.updated && res.result) {
-          rateLimiter.recordSuccess();
-          let flag = '';
-          if (res.usedCache) {
-            flag = ' 📦 CACHED';
-            cachedPrices++;
-          } else if (res.needsVerification && res.result.lowestPrice !== null) {
-            const lastSale = getLastSalePrice(card.product_id);
-            if (lastSale) {
-              verifyQueue.push({ card, apiPrice: res.result.lowestPrice, lastSale });
-              flag = ' 🔍 QUEUED';
-            }
-          }
-          
           if (res.result.lowestPrice !== null) {
-            console.log(` $${res.result.lowestPrice.toFixed(2)} (${res.result.listingCount} NM)${flag}`);
+            console.log(` $${res.result.lowestPrice.toFixed(2)} (${res.result.listingCount} NM)`);
           } else {
             console.log(` no NM`);
           }
           totalUpdated++;
-        } else if (res.apiSuccess || res.uiFallback) {
-          rateLimiter.recordSuccess();
-          console.log(' -');
         } else {
           console.log(' -');
         }
         
         if (res.apiSuccess) apiSuccesses++;
         if (res.uiFallback) uiFallbacks++;
-        if (!res.updated && !res.apiSuccess && !res.uiFallback && !res.rateLimited) totalErrors++;
+        if (!res.updated && !res.apiSuccess && !res.uiFallback) totalErrors++;
         
         if (i < cards.length - 1) {
-          await page.waitForTimeout(useApi ? rateLimiter.getDelay() : REQUEST_DELAY_MS);
+          await page.waitForTimeout(useApi ? 150 : REQUEST_DELAY_MS);
         }
-      }
-      
-      // Now verify queued deals
-      if (verifyQueue.length > 0) {
-        console.log(`\n🔍 Verifying ${verifyQueue.length} potential deals...`);
-        for (let i = 0; i < verifyQueue.length; i++) {
-          const { card, apiPrice, lastSale } = verifyQueue[i];
-          process.stdout.write(`\r  Verifying ${i + 1}/${verifyQueue.length}: ${card.name.substring(0, 30)}...   `);
-          await verifyDeal(page, card, apiPrice, lastSale);
-          await page.waitForTimeout(REQUEST_DELAY_MS);
-        }
-        console.log('');
       }
     } else {
-      // Parallel workers - progress bar output + real-time verification
+      // Parallel workers - progress bar output
       const pages: Page[] = [];
       for (let i = 0; i < numWorkers; i++) {
         pages.push(await context.newPage());
       }
       
-      // Reserve last page for verification
-      const verifyPage = pages[pages.length - 1];
-      const scraperPages = numWorkers > 2 ? pages.slice(0, -1) : pages;
-      
-      // Adaptive rate limiter - starts slower (1000ms) to avoid immediate rate limits
-      const rateLimiter = new AdaptiveRateLimiter({
-        minDelay: 1000,
-        maxDelay: 10000,
-        startDelay: 1000,
-      });
-      
-      // Start verification worker in background
-      let verifyRunning = true;
-      const verifyWorker = (async () => {
-        while (verifyRunning || verifyQueue.length > 0) {
-          if (verifyQueue.length > 0) {
-            const item = verifyQueue.shift()!;
-            await verifyDeal(verifyPage, item.card, item.apiPrice, item.lastSale);
-            await verifyPage.waitForTimeout(500);
-          } else {
-            await new Promise(r => setTimeout(r, 100));
-          }
-        }
-      })();
-      
-      // Track cards that need retry due to rate limiting
-      const retryQueue: PgCard[] = [];
-      
       // Process cards in parallel batches
-      for (let i = 0; i < cards.length; i += scraperPages.length) {
-        const batch = cards.slice(i, Math.min(i + scraperPages.length, cards.length));
+      for (let i = 0; i < cards.length; i += numWorkers) {
+        const batch = cards.slice(i, Math.min(i + numWorkers, cards.length));
         
         const results = await Promise.all(
-          batch.map((card, idx) => processCard(scraperPages[idx], card, useApi, 5, true))
+          batch.map((card, idx) => processCard(pages[idx], card, useApi))
         );
         
-        let batchHadRateLimit = false;
-        for (let j = 0; j < results.length; j++) {
-          const res = results[j];
-          const card = batch[j];
-          
-          if (res.rateLimited) {
-            batchHadRateLimit = true;
-            retryQueue.push(card);
-            continue;
-          }
-          
+        for (const res of results) {
           processed++;
           if (res.updated) totalUpdated++;
-          if (res.apiSuccess) {
-            apiSuccesses++;
-            rateLimiter.recordSuccess();
-          }
+          if (res.apiSuccess) apiSuccesses++;
           if (res.uiFallback) uiFallbacks++;
-          if (res.usedCache) cachedPrices++;
           if (!res.updated && !res.apiSuccess && !res.uiFallback) totalErrors++;
-          
-          // Queue for verification if needed
-          if (res.needsVerification && res.result?.lowestPrice !== null) {
-            const lastSale = getLastSalePrice(card.product_id);
-            if (lastSale) {
-              verifyQueue.push({ card, apiPrice: res.result.lowestPrice, lastSale });
-            }
-          }
-        }
-        
-        // If we hit rate limits, slow down and process retry queue
-        if (batchHadRateLimit) {
-          rateLimiter.recordError();
-          const waitTime = rateLimiter.getDelay();
-          process.stdout.write(`\r⏳ Rate limited! Waiting ${waitTime}ms before retrying ${retryQueue.length} cards...                    `);
-          await scraperPages[0].waitForTimeout(waitTime);
-          
-          // Retry rate-limited cards one at a time with delay
-          while (retryQueue.length > 0) {
-            const card = retryQueue.shift()!;
-            const res = await processCard(scraperPages[0], card, useApi, 5, true);
-            
-            if (res.rateLimited) {
-              // Still rate limited, wait longer and put back in queue
-              rateLimiter.recordError();
-              retryQueue.unshift(card);
-              await scraperPages[0].waitForTimeout(rateLimiter.getDelay());
-              continue;
-            }
-            
-            processed++;
-            if (res.updated) totalUpdated++;
-            if (res.apiSuccess) {
-              apiSuccesses++;
-              rateLimiter.recordSuccess();
-            }
-            if (!res.updated && !res.apiSuccess) totalErrors++;
-            
-            await scraperPages[0].waitForTimeout(rateLimiter.getDelay());
-          }
         }
         
         const pct = Math.round((processed / cards.length) * 100);
-        const delayInfo = rateLimiter.isSlowedDown() ? ` | ⏱️ ${rateLimiter.getDelay()}ms` : '';
-        const verifyStatus = verifyQueue.length > 0 ? ` | 🔍 Queue: ${verifyQueue.length}` : '';
-        process.stdout.write(`\r⏳ Progress: ${pct}% (${processed}/${cards.length}) | Updated: ${totalUpdated}${delayInfo}${verifyStatus}   `);
+        process.stdout.write(`\r⏳ Progress: ${pct}% (${processed}/${cards.length}) | Updated: ${totalUpdated}   `);
         
-        if (i + scraperPages.length < cards.length) {
-          await scraperPages[0].waitForTimeout(useApi ? rateLimiter.getDelay() : REQUEST_DELAY_MS);
+        if (i + numWorkers < cards.length) {
+          await pages[0].waitForTimeout(useApi ? 100 : REQUEST_DELAY_MS);
         }
       }
-      
-      // Wait for verification to complete
-      verifyRunning = false;
-      if (verifyQueue.length > 0 || verifiedCount > 0) {
-        console.log(`\n🔍 Finishing verification... (${verifyQueue.length} remaining)`);
-      }
-      await verifyWorker;
-      console.log('');
+      console.log(''); // New line after progress
     }
     
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -892,12 +611,6 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
     if (useApi) {
       console.log(`API successes: ${apiSuccesses}`);
       console.log(`UI fallbacks: ${uiFallbacks}`);
-      if (cachedPrices > 0) {
-        console.log(`📦 Used cached verified prices: ${cachedPrices}`);
-      }
-    }
-    if (verifiedCount > 0) {
-      console.log(`🔍 Deals verified: ${verifiedCount} (${verifiedFake} were fake)`);
     }
     console.log(`Time: ${elapsed}s (${(cards.length / parseFloat(elapsed)).toFixed(1)} products/sec)`);
     
@@ -906,5 +619,3 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
     console.log('\nBrowser closed.');
   }
 }
-
-
