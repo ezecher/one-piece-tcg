@@ -447,22 +447,23 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
     }
   }
   
-  // Visit TCGplayer first to establish session cookies
-  console.log('Establishing session with TCGplayer...');
+  // Quick session establishment - just load homepage briefly
+  console.log('Establishing session...');
   try {
-    await page.goto('https://www.tcgplayer.com/search/one-piece-card-game/product?productLineName=one-piece-card-game&view=grid', { 
+    await page.goto('https://www.tcgplayer.com/', { 
       waitUntil: 'domcontentloaded',
-      timeout: 30000 
+      timeout: 15000 
     });
-    await page.waitForTimeout(3000); // Let cookies/session establish
+    await page.waitForTimeout(1000);
     console.log('Session established ✓');
   } catch (e) {
     console.log('Warning: Could not establish session, continuing anyway...');
   }
   
   const request = context.request;
-  // Start MUCH slower to avoid immediate rate limiting (5 seconds between requests)
-  const rateLimiter = new AdaptiveRateLimiter(5000, 2000, 30000);
+  // Start faster now that proxy is working - API should be quick
+  // 500ms between requests, can slow down if rate limited
+  const rateLimiter = new AdaptiveRateLimiter(500, 300, 10000);
   const startTime = Date.now();
   
   let totalUpdated = 0;
@@ -471,28 +472,48 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
   let processed = 0;
   
   try {
+    // Track API success rate to decide on fallback
+    let apiSuccesses = 0;
+    let apiFailures = 0;
+    
     for (let i = 0; i < cards.length; i++) {
       const card = cards[i];
-      process.stdout.write(`[${i + 1}/${cards.length}] ${card.name.substring(0, 40).padEnd(40)}...`);
       
-      // Enable debug for first 3 cards to see what's happening
+      // Progress indicator every 50 cards or for first few
+      const showProgress = i < 5 || i % 50 === 0;
+      if (showProgress) {
+        process.stdout.write(`[${i + 1}/${cards.length}] ${card.name.substring(0, 40).padEnd(40)}...`);
+      }
+      
+      // Only use UI fallback if API is consistently failing (>50% failure rate after 10+ tries)
+      const useUiFallback = apiFailures > 10 && apiFailures > apiSuccesses;
       const debug = i < 3;
-      const result = await processCardListings(request, page, card, rateLimiter, true, debug);
+      const result = await processCardListings(request, page, card, rateLimiter, useUiFallback, debug);
       
       if (result.usedUi) totalUiFallbacks++;
       
       if (result.rateLimited) {
-        console.log(' (rate limited - skipping)');
+        apiFailures++;
+        if (showProgress) console.log(' (rate limited)');
         totalRateLimited++;
       } else if (result.updated) {
+        apiSuccesses++;
         const source = result.usedUi ? ' [UI]' : '';
-        console.log(` $${result.price?.toFixed(2)}${source}`);
+        if (showProgress) console.log(` $${result.price?.toFixed(2)}${source}`);
         totalUpdated++;
       } else {
-        console.log(' (no listings)');
+        apiSuccesses++; // No listings is still a successful API call
+        if (showProgress) console.log(' (no listings)');
       }
       
       processed++;
+      
+      // Show batch progress every 100 cards
+      if (i > 0 && i % 100 === 0) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        const rate = (i / parseFloat(elapsed)).toFixed(1);
+        console.log(`  ⏱️  ${i}/${cards.length} (${rate}/sec) - Updated: ${totalUpdated}, Rate limited: ${totalRateLimited}`);
+      }
       
       // Wait between requests
       if (i < cards.length - 1) {
