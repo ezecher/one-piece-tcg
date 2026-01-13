@@ -25,9 +25,13 @@ import {
   getCollectionCount,
   searchCardsByName,
   getCardByProductId,
-  getSuspiciousListings,
-  getSuspiciousCount,
 } from './db/client.js';
+import {
+  initPostgres,
+  pgGetSuspiciousListings,
+  pgGetSuspiciousCount,
+  closePool,
+} from './db/postgres.js';
 import { chromium } from 'playwright';
 import { join } from 'path';
 import { updateProducts, updateAllSets } from './jobs/updateProducts.js';
@@ -588,7 +592,7 @@ program
 program
   .command('verify-deals')
   .description('Verify potential deals using UI scraping (bypasses stale API cache)')
-  .option('-d, --min-discount <number>', 'Minimum discount percentage', '5')
+  .option('-d, --min-discount <number>', 'Minimum discount percentage (vs market price)', '10')
   .option('-l, --limit <number>', 'Max deals to verify')
   .option('--visible', 'Run browser in visible mode')
   .action(async (options) => {
@@ -609,12 +613,12 @@ program
 program
   .command('suspicious')
   .description('Show products with known stale/suspicious API prices')
-  .action(() => {
+  .action(async () => {
     try {
-      initializeDb();
+      await initPostgres();
       
-      const count = getSuspiciousCount();
-      const listings = getSuspiciousListings();
+      const count = await pgGetSuspiciousCount();
+      const listings = await pgGetSuspiciousListings();
       
       console.log('\n=== Suspicious API Prices ===\n');
       console.log(`Products with known stale prices: ${count}\n`);
@@ -626,15 +630,19 @@ program
       }
       
       for (const item of listings) {
-        const diff = ((item.verified_price - item.api_price) / item.api_price * 100).toFixed(1);
+        const apiPrice = parseFloat(String(item.api_price));
+        const verifiedPrice = parseFloat(String(item.verified_price));
+        const discountClaimed = parseFloat(String(item.discount_claimed || 0));
+        const discountActual = parseFloat(String(item.discount_actual || 0));
+        const diff = ((verifiedPrice - apiPrice) / apiPrice * 100).toFixed(1);
         console.log(`⚠️  Product ${item.product_id}`);
-        console.log(`   API claimed: $${item.api_price.toFixed(2)} (${item.discount_claimed.toFixed(1)}% off)`);
-        console.log(`   Actually: $${item.verified_price.toFixed(2)} (${item.discount_actual.toFixed(1)}% off)`);
+        console.log(`   API claimed: $${apiPrice.toFixed(2)} (${discountClaimed.toFixed(1)}% off)`);
+        console.log(`   Actually: $${verifiedPrice.toFixed(2)} (${discountActual.toFixed(1)}% off)`);
         console.log(`   Price was ${diff}% different from API`);
         console.log('');
       }
     } finally {
-      closeDb();
+      await closePool();
     }
   });
 

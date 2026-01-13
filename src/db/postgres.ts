@@ -153,7 +153,26 @@ export async function initPostgres(): Promise<void> {
       )
     `);
     
-    console.log('PostgreSQL tables initialized (including cards and sales)');
+    // Create suspicious_listing table for tracking stale/bad API prices
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS suspicious_listing (
+        id SERIAL PRIMARY KEY,
+        product_id INTEGER NOT NULL,
+        api_price DECIMAL(10, 2) NOT NULL,
+        verified_price DECIMAL(10, 2) NOT NULL,
+        last_sale_price DECIMAL(10, 2),
+        discount_claimed DECIMAL(5, 2),
+        discount_actual DECIMAL(5, 2),
+        verified_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    
+    // Create index for suspicious listing lookups
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_suspicious_product_id ON suspicious_listing(product_id)
+    `);
+    
+    console.log('PostgreSQL tables initialized (including cards, sales, and suspicious_listing)');
   } finally {
     client.release();
   }
@@ -620,5 +639,148 @@ export async function closePool(): Promise<void> {
     await pool.end();
     pool = null;
   }
+}
+
+// ============ Suspicious Listing Operations (for deal verification) ============
+
+export interface PgSuspiciousListing {
+  id: number;
+  product_id: number;
+  api_price: number;
+  verified_price: number;
+  last_sale_price: number | null;
+  discount_claimed: number | null;
+  discount_actual: number | null;
+  verified_at: Date;
+}
+
+/**
+ * Record a suspicious listing (when API data doesn't match UI-verified data)
+ */
+export async function pgRecordSuspiciousListing(
+  productId: number,
+  apiPrice: number,
+  verifiedPrice: number,
+  lastSalePrice: number | null,
+  discountClaimed: number,
+  discountActual: number
+): Promise<void> {
+  await getPool().query(
+    `INSERT INTO suspicious_listing 
+      (product_id, api_price, verified_price, last_sale_price, discount_claimed, discount_actual)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [productId, apiPrice, verifiedPrice, lastSalePrice, discountClaimed, discountActual]
+  );
+}
+
+/**
+ * Check if a price matches a known suspicious pattern for this product
+ */
+export async function pgIsSuspiciousPrice(productId: number, price: number): Promise<boolean> {
+  const result = await getPool().query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM suspicious_listing
+     WHERE product_id = $1
+       AND ABS(api_price - $2) < 0.01`,
+    [productId, price]
+  );
+  return parseInt(result.rows[0].count, 10) > 0;
+}
+
+/**
+ * Get the cached verified price for a known-bad API price
+ * Returns the verified_price if this exact API price was already flagged as stale
+ */
+export async function pgGetCachedVerifiedPrice(productId: number, apiPrice: number): Promise<number | null> {
+  const result = await getPool().query<{ verified_price: string }>(
+    `SELECT verified_price FROM suspicious_listing
+     WHERE product_id = $1
+       AND ABS(api_price - $2) < 0.01
+     ORDER BY verified_at DESC
+     LIMIT 1`,
+    [productId, apiPrice]
+  );
+  return result.rows[0] ? parseFloat(result.rows[0].verified_price) : null;
+}
+
+/**
+ * Get all suspicious listings (optionally for a specific product)
+ */
+export async function pgGetSuspiciousListings(productId?: number): Promise<PgSuspiciousListing[]> {
+  if (productId) {
+    const result = await getPool().query<PgSuspiciousListing>(
+      `SELECT * FROM suspicious_listing WHERE product_id = $1 ORDER BY verified_at DESC`,
+      [productId]
+    );
+    return result.rows;
+  }
+  const result = await getPool().query<PgSuspiciousListing>(
+    `SELECT * FROM suspicious_listing ORDER BY verified_at DESC LIMIT 100`
+  );
+  return result.rows;
+}
+
+/**
+ * Get count of products with suspicious listings
+ */
+export async function pgGetSuspiciousCount(): Promise<number> {
+  const result = await getPool().query<{ count: string }>(
+    `SELECT COUNT(DISTINCT product_id) as count FROM suspicious_listing`
+  );
+  return parseInt(result.rows[0].count, 10);
+}
+
+/**
+ * Get potential deals (cards where lowest listing is below market price)
+ * Excludes cards with known suspicious prices
+ */
+export async function pgGetPotentialDeals(minDiscountPct: number = 10): Promise<Array<{
+  product_id: number;
+  name: string;
+  tcg_url: string;
+  product_type: string;
+  lowest_listing: number;
+  market_price: number;
+  discount_pct: number;
+}>> {
+  const factor = (100 - minDiscountPct) / 100;
+  const result = await getPool().query(`
+    SELECT 
+      c.product_id,
+      c.name,
+      c.tcg_url,
+      c.product_type,
+      c.lowest_listing,
+      c.market_price,
+      ROUND(((c.market_price - c.lowest_listing) / c.market_price * 100)::numeric, 1) as discount_pct
+    FROM cards c
+    WHERE c.lowest_listing IS NOT NULL 
+      AND c.market_price IS NOT NULL
+      AND c.market_price > 0
+      AND c.lowest_listing < c.market_price * $1
+      AND NOT EXISTS (
+        SELECT 1 FROM suspicious_listing sl 
+        WHERE sl.product_id = c.product_id
+          AND ABS(sl.api_price - c.lowest_listing) < 0.01
+      )
+    ORDER BY discount_pct DESC
+  `, [factor]);
+  
+  return result.rows.map(row => ({
+    ...row,
+    lowest_listing: parseFloat(row.lowest_listing),
+    market_price: parseFloat(row.market_price),
+    discount_pct: parseFloat(row.discount_pct),
+  }));
+}
+
+/**
+ * Clear suspicious listings for specific products (after re-verification)
+ */
+export async function pgClearSuspiciousListings(productIds: number[]): Promise<void> {
+  if (productIds.length === 0) return;
+  await getPool().query(
+    `DELETE FROM suspicious_listing WHERE product_id = ANY($1)`,
+    [productIds]
+  );
 }
 

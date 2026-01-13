@@ -309,7 +309,8 @@ export async function scrapeProductSalesFromUI(page: Page, productUrl: string): 
       return results;
     });
     
-    // Normalize the scraped data
+    // Normalize the scraped data - FILTER FOR NEAR MINT ONLY
+    // This helps exclude Japanese/Korean variants which are often cheaper
     const normalizedSales: NormalizedSale[] = sales.map((sale) => ({
       sold_at: parseDate(sale.date),
       price: parsePrice(sale.price),
@@ -317,7 +318,12 @@ export async function scrapeProductSalesFromUI(page: Page, productUrl: string): 
       quantity: parseInt(sale.quantity, 10) || 1,
       listing_type: null,
       source_raw: JSON.stringify(sale),
-    })).filter(s => s.price > 0);
+    })).filter(s => {
+      if (s.price <= 0) return false;
+      // Only keep Near Mint sales (English cards are typically NM)
+      const cond = (s.condition || '').toLowerCase();
+      return cond.includes('near mint') || cond === 'nm' || cond.includes('unopened');
+    });
     
     console.log(`Found ${normalizedSales.length} sales from UI`);
     return normalizedSales;
@@ -392,8 +398,13 @@ export async function fetchProductSalesFromAPI(
       rawSales = data.results;
     }
     
-    const normalizedSales = rawSales.map(normalizeSale);
-    console.log(`Fetched ${normalizedSales.length} sales from API`);
+    // Filter for Near Mint only - excludes Japanese/Korean variants
+    const normalizedSales = rawSales.map(normalizeSale).filter(s => {
+      if (s.price <= 0) return false;
+      const cond = (s.condition || '').toLowerCase();
+      return cond.includes('near mint') || cond === 'nm' || cond.includes('unopened');
+    });
+    console.log(`Fetched ${normalizedSales.length} NM sales from API`);
     
       // Success! Let rate limiter know
       if (rateLimiter) {
