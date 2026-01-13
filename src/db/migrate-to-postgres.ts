@@ -41,7 +41,7 @@ async function migrate() {
           tcg_url: card.tcg_url,
           set_name: card.set_name,
           rarity: card.rarity,
-          number: card.number,
+          // 'number' doesn't exist in SQLite schema
           product_type: card.product_type,
           market_price: card.market_price,
           lowest_listing: card.lowest_listing,

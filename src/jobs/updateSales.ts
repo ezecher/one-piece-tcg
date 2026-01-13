@@ -83,9 +83,9 @@ async function processCardSales(
       for (const sale of result.sales) {
         const saved = await pgSaveSaleEvent({
           product_id: card.product_id,
-          sold_at: sale.soldAt,
+          sold_at: sale.sold_at,
           condition: sale.condition,
-          variant: sale.variant,
+          variant: null, // NormalizedSale doesn't have variant
           quantity: sale.quantity,
           price: sale.price,
         });
