@@ -456,7 +456,7 @@
         <div class="stat-value" id="stat-sale-value">--</div>
       </div>
       <div class="stat-card red">
-        <div class="stat-label">Deals (Under Last Sale)</div>
+        <div class="stat-label">Deals (10%+ Below Market)</div>
         <div class="stat-value" id="stat-deals">--</div>
       </div>
     </div>
@@ -533,18 +533,8 @@
         // Load stats
         statsData = await fetch('/api/stats').then(r => r.json());
 
-        // Calculate deals - listings under last sale price (the real deal indicator!)
-        dealsData = cardsData.filter(c => {
-          const lastSale = c.last_sale_price;
-          const lowestListing = c.lowest_listing;
-          // A deal is when lowest listing is below last sale price by at least 5%
-          return lastSale && lowestListing && lowestListing < lastSale * 0.95;
-        }).map(c => ({
-          ...c,
-          discount_pct: Math.round((1 - c.lowest_listing / c.last_sale_price) * 100)
-        })).filter(c => c.discount_pct <= 40) // Filter out suspicious "too good to be true" deals (likely stale API data)
-        .sort((a, b) => b.discount_pct - a.discount_pct);
-        
+        // Load deals from API (uses market price, excludes suspicious listings)
+        dealsData = await fetch('/api/deals?discount=10').then(r => r.json());
         document.getElementById('stat-deals').textContent = dealsData.length;
 
         // Load sets
@@ -814,9 +804,16 @@
             aVal = a.set_name || '';
             bVal = b.set_name || '';
             break;
+          case 'market_price':
+            aVal = a.market_price || 0;
+            bVal = b.market_price || 0;
+            break;
           case 'last_sale_price':
-            aVal = a.last_sale_price || 0;
-            bVal = b.last_sale_price || 0;
+            // Look up last_sale from cardsData since deals API doesn't include it
+            const cardA = cardsData.find(c => c.product_id === a.product_id);
+            const cardB = cardsData.find(c => c.product_id === b.product_id);
+            aVal = cardA?.last_sale_price || 0;
+            bVal = cardB?.last_sale_price || 0;
             break;
           case 'lowest_listing':
             aVal = a.lowest_listing || 0;
@@ -827,8 +824,8 @@
             bVal = b.discount_pct || 0;
             break;
           case 'savings':
-            aVal = (a.last_sale_price || 0) - (a.lowest_listing || 0);
-            bVal = (b.last_sale_price || 0) - (b.lowest_listing || 0);
+            aVal = (a.market_price || 0) - (a.lowest_listing || 0);
+            bVal = (b.market_price || 0) - (b.lowest_listing || 0);
             break;
           default:
             aVal = a.discount_pct || 0;
@@ -845,22 +842,26 @@
       container.innerHTML = `
         <div style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
           <span style="color: var(--accent-green);">💡</span>
-          <span style="color: var(--text-secondary); margin-left: 0.5rem;">Deals are cards where the lowest listing is at least 5% below the last sale price</span>
+          <span style="color: var(--text-secondary); margin-left: 0.5rem;">Deals are English Near Mint listings at least 10% below market price (excludes stale/suspicious data)</span>
         </div>
         <table>
           <thead>
             <tr>
               <th></th>
               <th class="sortable ${dealsSortClass('name')}" onclick="sortDealsBy('name')">Card</th>
+              <th class="sortable ${dealsSortClass('market_price')}" onclick="sortDealsBy('market_price')">Market</th>
               <th class="sortable ${dealsSortClass('last_sale_price')}" onclick="sortDealsBy('last_sale_price')">Last Sale</th>
-              <th class="sortable ${dealsSortClass('lowest_listing')}" onclick="sortDealsBy('lowest_listing')">Lowest Listing</th>
+              <th class="sortable ${dealsSortClass('lowest_listing')}" onclick="sortDealsBy('lowest_listing')">Lowest</th>
               <th class="sortable ${dealsSortClass('discount_pct')}" onclick="sortDealsBy('discount_pct')">Discount</th>
               <th class="sortable ${dealsSortClass('savings')}" onclick="sortDealsBy('savings')">Savings</th>
             </tr>
           </thead>
           <tbody>
             ${sortedDeals.map(deal => {
-              const savings = deal.last_sale_price - deal.lowest_listing;
+              const savings = deal.market_price - deal.lowest_listing;
+              // Find card data to get last_sale_price (deals API doesn't include it)
+              const cardData = cardsData.find(c => c.product_id === deal.product_id);
+              const lastSale = cardData?.last_sale_price || null;
               return `
               <tr class="clickable" onclick="showSales(${deal.product_id}, '${escapeHtml(deal.name)}')">
                 <td>
@@ -875,7 +876,8 @@
                   </div>
                   <div class="card-set">${escapeHtml(deal.set_name || '')}</div>
                 </td>
-                <td class="price">${formatPrice(deal.last_sale_price)}</td>
+                <td class="price">${formatPrice(deal.market_price)}</td>
+                <td class="price ${lastSale && deal.lowest_listing < lastSale ? 'positive' : ''}">${lastSale ? formatPrice(lastSale) : '--'}</td>
                 <td class="price positive">${formatPrice(deal.lowest_listing)}</td>
                 <td class="price positive">${deal.discount_pct}% below</td>
                 <td class="price positive">Save ${formatPrice(savings)}</td>
