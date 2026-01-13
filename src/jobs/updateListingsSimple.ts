@@ -182,13 +182,47 @@ async function fetchListingsViaUI(
 }
 
 /**
+ * Non-English language indicators to filter out
+ */
+const NON_ENGLISH_INDICATORS = [
+  'japanese', 'japan', 'jp version', '(jp)', '[jp]', ' jp ', 'jp card',
+  'korean', 'korea', 'kr version', '(kr)', '[kr]', ' kr ', 'kr card',
+  'chinese', 'china', '(cn)', '[cn]',
+  '日本語', '日本', '한국어', '한국',
+];
+
+/**
+ * Loose pack indicators (for filtering booster box listings)
+ */
+const LOOSE_PACK_PATTERNS = [
+  /loose\s*packs?/i,
+  /individual\s*packs?/i,
+  /single\s*packs?/i,
+  /\d+x?\s*packs?/i,
+  /packs?\s*only/i,
+];
+
+function isNonEnglish(text: string): boolean {
+  const lower = text.toLowerCase();
+  return NON_ENGLISH_INDICATORS.some(ind => lower.includes(ind));
+}
+
+function isLoosePack(text: string): boolean {
+  return LOOSE_PACK_PATTERNS.some(pattern => pattern.test(text));
+}
+
+/**
  * Fetch listings via TCGplayer API with retry for network errors
+ * Filters for English, Near Mint/Unopened only
  */
 async function fetchListings(
   request: APIRequestContext,
   productId: number,
+  productName?: string,
   retries: number = 2
 ): Promise<ListingResult> {
+  const isBoosterBox = productName?.toLowerCase().includes('booster box');
+  
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const url = `https://mp-search-api.tcgplayer.com/v1/product/${productId}/listings?mpfev=4528&_t=${Date.now()}`;
@@ -232,34 +266,75 @@ async function fetchListings(
           price?: number;
           quantity?: number;
           conditionName?: string;
+          condition?: string;
+          languageName?: string;
+          language?: string;
+          customListingText?: string;
+          customData?: {
+            title?: string;
+            description?: string;
+          };
         }>;
       }>;
     };
     
     const listingsWrapper = data.results?.[0];
     const listings = listingsWrapper?.results || [];
-    const totalResults = listingsWrapper?.totalResults || listings.length;
     
     if (listings.length === 0) {
       return { lowestPrice: null, listingCount: 0, currentQuantity: 0, rateLimited: false };
     }
     
-    // Find lowest price (Near Mint preferred)
-    let lowestPrice: number | null = null;
-    let totalQuantity = 0;
+    // Filter listings: English only, Near Mint/Unopened condition
+    const filtered = listings.filter(item => {
+      // Check language field - exclude Japanese/Korean
+      const lang = (item.languageName || item.language || '').toLowerCase();
+      if (lang === 'japanese' || lang === 'korean' || lang === 'chinese') return false;
+      
+      // Check condition - only Near Mint or Unopened
+      const cond = (item.conditionName || item.condition || '').toLowerCase();
+      if (!cond.includes('near mint') && !cond.includes('unopened')) return false;
+      
+      // Check custom text fields for non-English indicators
+      const customTitle = item.customData?.title || '';
+      const customDesc = item.customData?.description || '';
+      const customText = item.customListingText || '';
+      const allText = [customTitle, customDesc, customText].join(' ');
+      
+      if (isNonEnglish(allText)) return false;
+      
+      // For booster boxes, filter out loose pack listings
+      if (isBoosterBox && isLoosePack(allText)) return false;
+      
+      return true;
+    });
     
-    for (const listing of listings) {
-      if (listing.price !== undefined && listing.price > 0) {
-        if (lowestPrice === null || listing.price < lowestPrice) {
-          lowestPrice = listing.price;
-        }
-      }
-      totalQuantity += listing.quantity || 1;
+    if (filtered.length === 0) {
+      return { lowestPrice: null, listingCount: 0, currentQuantity: 0, rateLimited: false };
     }
     
+    // Sort by price and find lowest
+    filtered.sort((a, b) => (a.price || 999999) - (b.price || 999999));
+    
+    // Sanity check: filter out suspiciously cheap listings (<30% of median)
+    if (filtered.length >= 3) {
+      const medianIdx = Math.floor(filtered.length / 2);
+      const medianPrice = filtered[medianIdx].price || 0;
+      const minReasonable = medianPrice * 0.3;
+      
+      const sane = filtered.filter(item => (item.price || 0) >= minReasonable);
+      if (sane.length > 0 && sane.length < filtered.length) {
+        filtered.length = 0;
+        filtered.push(...sane);
+      }
+    }
+    
+    const lowest = filtered[0];
+    const totalQuantity = filtered.reduce((sum, item) => sum + (item.quantity || 1), 0);
+    
     return {
-      lowestPrice,
-      listingCount: totalResults,
+      lowestPrice: lowest.price || null,
+      listingCount: filtered.length,
       currentQuantity: totalQuantity,
       rateLimited: false,
     };
@@ -287,8 +362,8 @@ async function processCardListings(
   useUiFallback: boolean = true,
   debug: boolean = false
 ): Promise<{ updated: boolean; rateLimited: boolean; price: number | null; usedUi: boolean }> {
-  // Try API first
-  const result = await fetchListings(request, card.product_id);
+  // Try API first (pass product name for booster box filtering)
+  const result = await fetchListings(request, card.product_id, card.name);
   
   if (result.rateLimited && useUiFallback) {
     // API rate limited - try UI scraping instead
