@@ -6,11 +6,7 @@ echo "   Database: PostgreSQL (no file sync needed!)"
 
 cd /app
 
-# Wait a bit to avoid immediate rate limiting
-echo "⏳ Waiting 2 minutes before starting (rate limit cooldown)..."
-sleep 120
-
-# Refresh listings - writes directly to PostgreSQL
+# Just run the scraper - it writes directly to PostgreSQL
 echo "📋 Refreshing listings..."
 node dist/index.js refresh-listings --workers 1 --headless 2>&1 || echo "Listings refresh completed with some errors"
 

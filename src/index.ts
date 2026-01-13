@@ -34,6 +34,7 @@ import { updateProducts, updateAllSets } from './jobs/updateProducts.js';
 import { updateSales, updateSalesForProduct } from './jobs/updateSales.js';
 import { updateListings } from './jobs/updateListings.js';
 import { updateListingsQuick } from './jobs/updateListingsQuick.js';
+import { updateListingsSimple } from './jobs/updateListingsSimple.js';
 import { scrapeTopCards, scrapeOneSet } from './jobs/scrapeTopCards.js';
 import { fixCardNames } from './jobs/fixCardNames.js';
 import { verifyDeals } from './jobs/verifyDeals.js';
@@ -403,22 +404,19 @@ program
 
 program
   .command('refresh-listings')
-  .description('Quick API-based listings refresh (much faster than update-listings)')
+  .description('Quick API-based listings refresh (simple and reliable)')
   .option('-s, --set <name>', 'Filter by set name')
   .option('-l, --limit <number>', 'Max products to process')
   .option('-p, --product <id>', 'Specific product ID to refresh')
-  .option('-w, --workers <number>', 'Parallel workers 1-4 (default: 1)', '1')
+  .option('-w, --workers <number>', 'Parallel workers (ignored - always uses 1)', '1')
   .option('--headless', 'Run browser in headless mode (default: visible)')
-  .option('--no-api', 'Skip API and use UI scraping only')
   .action(async (options) => {
     try {
-      await updateListingsQuick({
+      await updateListingsSimple({
         setName: options.set,
         limit: options.limit ? parseInt(options.limit, 10) : undefined,
         productIds: options.product ? [parseInt(options.product, 10)] : undefined,
         headless: options.headless === true,
-        useApi: options.api !== false,
-        workers: parseInt(options.workers, 10),
       });
     } catch (error) {
       console.error('Failed to refresh listings:', error);

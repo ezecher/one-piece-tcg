@@ -690,11 +690,11 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
       // Single worker - original behavior with detailed output
       const page = context.pages()[0] || await context.newPage();
       
-      // Adaptive rate limiter - starts fast (150ms), slows on 403s
+      // Adaptive rate limiter - starts at 1000ms like sales scraper
       const rateLimiter = new AdaptiveRateLimiter({
-        minDelay: 150,
+        minDelay: 500,
         maxDelay: 10000,
-        startDelay: 150,
+        startDelay: 1000,  // Same as sales scraper
       });
       
       for (let i = 0; i < cards.length; i++) {
