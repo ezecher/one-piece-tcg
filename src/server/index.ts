@@ -30,6 +30,7 @@ import {
   pgCountSales,
   pgGetSalesForProduct,
   pgGetRecentRuns,
+  pgGetPotentialDeals,
   PgCard,
 } from '../db/postgres.js';
 import {
@@ -388,22 +389,13 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-// Get potential deals (PostgreSQL)
+// Get potential deals (PostgreSQL) - uses market price, excludes suspicious listings
 app.get('/api/deals', async (req, res) => {
   try {
     const discount = parseInt(req.query.discount as string) || 10;
-    const cards = await pgGetAllCards();
     
-    // Find cards where lowest_listing is below last_sale_price by X%
-    const deals = cards.filter(card => {
-      if (!card.lowest_listing || !card.last_sale_price) return false;
-      const discountPct = ((card.last_sale_price - card.lowest_listing) / card.last_sale_price) * 100;
-      return discountPct >= discount;
-    }).map(card => ({
-      ...card,
-      discount_pct: card.last_sale_price ? 
-        Math.round(((card.last_sale_price - (card.lowest_listing || 0)) / card.last_sale_price) * 100) : 0,
-    })).sort((a, b) => (b.discount_pct || 0) - (a.discount_pct || 0));
+    // Use the new PostgreSQL function that excludes suspicious listings
+    const deals = await pgGetPotentialDeals(discount);
     
     res.json(deals);
   } catch (error) {

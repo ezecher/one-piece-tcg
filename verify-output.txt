@@ -293,3 +293,478 @@ Launching browser...
 [42/208] 🔍 Rebecca (Parallel)
    API says: $8.24 listing vs $13.67 market (39.7% off)
     📋 Fetching listings...
+       Found 8 EN NM listings (skipped: 1 non-EN, 1 cond)
+       Lowest: $14.81
+   ❌ NOT A DEAL: $14.81 is 8.3% ABOVE market
+
+[43/208] 🔍 Kaido (044) (SP)
+   API says: $75.00 listing vs $124.04 market (39.5% off)
+    📋 Fetching listings...
+       Found 4 EN NM listings (skipped: 3 non-EN, 3 cond)
+       Lowest: $139.15
+   ❌ NOT A DEAL: $139.15 is 12.2% ABOVE market
+
+[44/208] 🔍 Otama (Alternate Art)
+   API says: $23.00 listing vs $37.93 market (39.4% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $28.95
+   ✅ VERIFIED: $28.95 (23.7% below market)
+
+[45/208] 🔍 Gum-Gum King Kong Gun
+   API says: $11.82 listing vs $19.24 market (38.6% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $11.82
+   ✅ VERIFIED: $11.82 (38.6% below market)
+
+[46/208] 🔍 O-Nami (Alternate Art)
+   API says: $43.00 listing vs $70.04 market (38.6% off)
+    📋 Fetching listings...
+       Found 8 EN NM listings (skipped: 1 non-EN, 1 cond)
+       Lowest: $44.96
+   ✅ VERIFIED: $44.96 (35.8% below market)
+
+[47/208] 🔍 Roronoa Zoro (Alternate Art)
+   API says: $59.99 listing vs $97.78 market (38.6% off)
+    📋 Fetching listings...
+       Found 6 EN NM listings (skipped: 3 non-EN, 1 cond)
+       Lowest: $116.95
+   ❌ NOT A DEAL: $116.95 is 19.6% ABOVE market
+
+[48/208] 🔍 Magellan (085)
+   API says: $7.31 listing vs $11.86 market (38.4% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $7.31
+   ✅ VERIFIED: $7.31 (38.4% below market)
+
+[49/208] 🔍 Starter Deck 15: RED Edward.Newgate
+   API says: $140.00 listing vs $223.84 market (37.5% off)
+    📋 Fetching listings...
+       Found 4 EN NM listings (skipped: 2 non-EN, 1 cond)
+       Lowest: $354.99
+   ❌ NOT A DEAL: $354.99 is 58.6% ABOVE market
+
+[50/208] 🔍 DON!! Card (Gol.D.Roger) (Gold)
+   API says: $13.25 listing vs $21.13 market (37.3% off)
+    📋 Fetching listings...
+       Found 8 EN NM listings (skipped: 0 non-EN, 2 cond)
+       Lowest: $19.99
+   ⚠️  Small: $19.99 (only 5.4% off, was 37.3%)
+
+[51/208] 🔍 Charlotte Flampe (Alternate Art)
+   API says: $9.90 listing vs $15.54 market (36.3% off)
+    📋 Fetching listings...
+       Found 5 EN NM listings (skipped: 4 non-EN, 1 cond)
+       Lowest: $18.54
+   ❌ NOT A DEAL: $18.54 is 19.3% ABOVE market
+
+[52/208] 🔍 Starter Deck 28: GREEN/YELLOW Yamato
+   API says: $10.00 listing vs $15.51 market (35.5% off)
+    📋 Fetching listings...
+       Found 5 EN NM listings (skipped: 4 non-EN, 1 cond)
+       Lowest: $17.97
+   ❌ NOT A DEAL: $17.97 is 15.9% ABOVE market
+
+[53/208] 🔍 Monkey.D.Luffy (002)
+   API says: $9.79 listing vs $15.14 market (35.3% off)
+    📋 Fetching listings...
+       Found 8 EN NM listings (skipped: 0 non-EN, 2 cond)
+       Lowest: $9.79
+   ✅ VERIFIED: $9.79 (35.3% below market)
+
+[54/208] 🔍 Perona - OP14-033 (Alternate Art)
+   API says: $59.12 listing vs $89.99 market (34.3% off)
+    📋 Fetching listings...
+       Found 5 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $64.99
+   ✅ VERIFIED: $64.99 (27.8% below market)
+
+[55/208] 🔍 Charlotte Linlin (114) (Alternate Art)
+   API says: $10.99 listing vs $16.40 market (33% off)
+    📋 Fetching listings...
+       Found 7 EN NM listings (skipped: 1 non-EN, 2 cond)
+       Lowest: $12.99
+   ✅ VERIFIED: $12.99 (20.8% below market)
+
+[56/208] 🔍 Carrot (Alternate Art)
+   API says: $53.99 listing vs $79.99 market (32.5% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $53.99
+   ✅ VERIFIED: $53.99 (32.5% below market)
+
+[57/208] 🔍 Kuzan (043) (Alternate Art)
+   API says: $9.99 listing vs $14.56 market (31.4% off)
+    📋 Fetching listings...
+       Found 8 EN NM listings (skipped: 1 non-EN, 1 cond)
+       Lowest: $20.00
+   ❌ NOT A DEAL: $20.00 is 37.4% ABOVE market
+
+[58/208] 🔍 Trafalgar Law (073) (Alternate Art)
+   API says: $8.76 listing vs $12.77 market (31.4% off)
+    📋 Fetching listings...
+       Found 7 EN NM listings (skipped: 0 non-EN, 3 cond)
+       Lowest: $8.76
+   ✅ VERIFIED: $8.76 (31.4% below market)
+
+[59/208] 🔍 Starter Deck 26: PURPLE/BLACK Monkey.D.Luffy
+   API says: $9.00 listing vs $13.08 market (31.2% off)
+    📋 Fetching listings...
+       Found 6 EN NM listings (skipped: 1 non-EN, 3 cond)
+       Lowest: $10.22
+   ✅ VERIFIED: $10.22 (21.9% below market)
+
+[60/208] 🔍 Trafalgar Law (Tournament Pack Vol. 1)
+   API says: $8.16 listing vs $11.70 market (30.3% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $7.38
+   ✅ VERIFIED: $7.38 (36.9% below market)
+
+[61/208] 🔍 Shanks
+   API says: $20.59 listing vs $29.26 market (29.6% off)
+    📋 Fetching listings...
+       Found 7 EN NM listings (skipped: 2 non-EN, 1 cond)
+       Lowest: $36.00
+   ❌ NOT A DEAL: $36.00 is 23.0% ABOVE market
+
+[62/208] 🔍 DON!! Card (Sugar) (Gold)
+   API says: $30.00 listing vs $42.64 market (29.6% off)
+    📋 Fetching listings...
+       Found 4 EN NM listings (skipped: 5 non-EN, 1 cond)
+       Lowest: $41.31
+   ⚠️  Small: $41.31 (only 3.1% off, was 29.6%)
+
+[63/208] 🔍 Otama (Offline Regional 2023) [Participant]
+   API says: $28.00 listing vs $39.49 market (29.1% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $32.85
+   ✅ VERIFIED: $32.85 (16.8% below market)
+
+[64/208] 🔍 King (Alternate Art)
+   API says: $42.66 listing vs $59.99 market (28.9% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $42.66
+   ✅ VERIFIED: $42.66 (28.9% below market)
+
+[65/208] 🔍 Perona - OP14-111 (Alternate Art)
+   API says: $57.00 listing vs $79.99 market (28.7% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $57.00
+   ✅ VERIFIED: $57.00 (28.7% below market)
+
+[66/208] 🔍 Starter Deck 8: Monkey.D.Luffy
+   API says: $12.70 listing vs $17.68 market (28.2% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $19.69
+   ❌ NOT A DEAL: $19.69 is 11.4% ABOVE market
+
+[67/208] 🔍 Tashigi (Treasure Cup 2025)
+   API says: $1338.98 listing vs $1864.09 market (28.2% off)
+    📋 Fetching listings...
+       Found 5 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $1338.99
+   ✅ VERIFIED: $1338.99 (28.2% below market)
+
+[68/208] 🔍 Otama (Full Art)
+   API says: $7.27 listing vs $10.10 market (28% off)
+    📋 Fetching listings...
+       Found 6 EN NM listings (skipped: 2 non-EN, 2 cond)
+       Lowest: $8.49
+   ✅ VERIFIED: $8.49 (15.9% below market)
+
+[69/208] 🔍 Nami (Alternate Art)
+   API says: $60.00 listing vs $83.02 market (27.7% off)
+    📋 Fetching listings...
+       Found 4 EN NM listings (skipped: 2 non-EN, 4 cond)
+       Lowest: $100.00
+   ❌ NOT A DEAL: $100.00 is 20.5% ABOVE market
+
+[70/208] 🔍 Gift Collection 2023
+   API says: $150.00 listing vs $207.55 market (27.7% off)
+    📋 Fetching listings...
+       Found 8 EN NM listings (skipped: 1 non-EN, 1 cond)
+       Lowest: $220.00
+   ❌ NOT A DEAL: $220.00 is 6.0% ABOVE market
+
+[71/208] 🔍 You're the One Who Should Disappear (Alternate Art)
+   API says: $31.18 listing vs $43.09 market (27.6% off)
+    📋 Fetching listings...
+       Found 8 EN NM listings (skipped: 0 non-EN, 2 cond)
+       Lowest: $64.00
+   ❌ NOT A DEAL: $64.00 is 48.5% ABOVE market
+
+[72/208] 🔍 O-Nami (Welcome Pack Vol. 2)
+   API says: $10.89 listing vs $15.02 market (27.5% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $10.90
+   ✅ VERIFIED: $10.90 (27.4% below market)
+
+[73/208] 🔍 Starter Deck 17: BLUE Donquixote Doflamingo
+   API says: $39.99 listing vs $54.99 market (27.3% off)
+    📋 Fetching listings...
+       Found 0 EN NM listings (skipped: 10 non-EN, 1 cond)
+   ℹ️  No English NM listings found
+
+[74/208] 🔍 Sanji (Offline Regional 2024) [Participant]
+   API says: $7.99 listing vs $10.97 market (27.2% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $13.40
+   ❌ NOT A DEAL: $13.40 is 22.2% ABOVE market
+
+[75/208] 🔍 Gol.D.Roger (Store Tournament 2025 Vol. 4)
+   API says: $13.00 listing vs $17.83 market (27.1% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $14.98
+   ✅ VERIFIED: $14.98 (16.0% below market)
+
+[76/208] 🔍 Starter Deck 18: PURPLE Monkey.D.Luffy
+   API says: $39.55 listing vs $54.25 market (27.1% off)
+    📋 Fetching listings...
+       Found 3 EN NM listings (skipped: 6 non-EN, 1 cond)
+       Lowest: $60.00
+   ❌ NOT A DEAL: $60.00 is 10.6% ABOVE market
+
+[77/208] 🔍 Monkey.D.Luffy (Promotion Pack 2022)
+   API says: $23.69 listing vs $32.05 market (26.1% off)
+    📋 Fetching listings...
+       Found 4 EN NM listings (skipped: 0 non-EN, 6 cond)
+       Lowest: $23.68
+   ✅ VERIFIED: $23.68 (26.1% below market)
+
+[78/208] 🔍 Duval (Full Art)
+   API says: $8.28 listing vs $11.18 market (25.9% off)
+    📋 Fetching listings...
+       Found 6 EN NM listings (skipped: 3 non-EN, 1 cond)
+       Lowest: $9.50
+   ✅ VERIFIED: $9.50 (15.0% below market)
+
+[79/208] 🔍 Starter Deck 26: PURPLE/BLACK Monkey.D.Luffy
+   API says: $15.00 listing vs $20.05 market (25.2% off)
+    📋 Fetching listings...
+       Found 7 EN NM listings (skipped: 2 non-EN, 1 cond)
+       Lowest: $26.99
+   ❌ NOT A DEAL: $26.99 is 34.6% ABOVE market
+
+[80/208] 🔍 Donquixote Doflamingo - OP14-060 (Alternate Art)
+   API says: $94.45 listing vs $126.33 market (25.2% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $94.46
+   ✅ VERIFIED: $94.46 (25.2% below market)
+
+[81/208] 🔍 Sanji (Parallel)
+   API says: $19.31 listing vs $25.43 market (24.1% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $26.68
+   ❌ NOT A DEAL: $26.68 is 4.9% ABOVE market
+
+[82/208] 🔍 One Piece Card Game Illustration Box Vol. 5
+   API says: $67.46 listing vs $88.85 market (24.1% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $67.47
+   ✅ VERIFIED: $67.47 (24.1% below market)
+
+[83/208] 🔍 One Piece Card Game Illustration Box Vol. 6
+   API says: $67.46 listing vs $88.85 market (24.1% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $67.47
+   ✅ VERIFIED: $67.47 (24.1% below market)
+
+[84/208] 🔍 Queen (Parallel)
+   API says: $8.00 listing vs $10.50 market (23.8% off)
+    📋 Fetching listings...
+       Found 6 EN NM listings (skipped: 3 non-EN, 1 cond)
+       Lowest: $9.00
+   ✅ VERIFIED: $9.00 (14.3% below market)
+
+[85/208] 🔍 Carina (Parallel)
+   API says: $10.99 listing vs $14.34 market (23.4% off)
+    📋 Fetching listings...
+       Found 6 EN NM listings (skipped: 2 non-EN, 2 cond)
+       Lowest: $10.99
+   ✅ VERIFIED: $10.99 (23.4% below market)
+
+[86/208] 🔍 Monkey.D.Luffy (English Version 2nd Anniversary Set)
+   API says: $350.00 listing vs $454.71 market (23% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $422.30
+   ⚠️  Small: $422.30 (only 7.1% off, was 23%)
+
+[87/208] 🔍 Saint Shalria
+   API says: $8.50 listing vs $11.02 market (22.9% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $8.50
+   ✅ VERIFIED: $8.50 (22.9% below market)
+
+[88/208] 🔍 Edward.Newgate (Parallel)
+   API says: $6.73 listing vs $8.72 market (22.8% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $7.98
+   ⚠️  Small: $7.98 (only 8.5% off, was 22.8%)
+
+[89/208] 🔍 Monkey.D.Luffy (Alternate Art)
+   API says: $138.94 listing vs $179.79 market (22.7% off)
+    📋 Fetching listings...
+       Found 6 EN NM listings (skipped: 2 non-EN, 2 cond)
+       Lowest: $138.94
+   ✅ VERIFIED: $138.94 (22.7% below market)
+
+[90/208] 🔍 Zeus (Alternate Art)
+   API says: $28.98 listing vs $37.42 market (22.6% off)
+    📋 Fetching listings...
+       Found 8 EN NM listings (skipped: 1 non-EN, 1 cond)
+       Lowest: $30.48
+   ✅ VERIFIED: $30.48 (18.5% below market)
+
+[91/208] 🔍 Jewelry Bonney (118) (Alternate Art)
+   API says: $18.12 listing vs $23.33 market (22.3% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $24.80
+   ❌ NOT A DEAL: $24.80 is 6.3% ABOVE market
+
+[92/208] 🔍 Crocodile (Premium Card Collection -Leader Collection-)
+   API says: $8.00 listing vs $10.23 market (21.8% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $9.31
+   ⚠️  Small: $9.31 (only 9.0% off, was 21.8%)
+
+[93/208] 🔍 Roronoa Zoro
+   API says: $13.24 listing vs $16.87 market (21.5% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $19.99
+   ❌ NOT A DEAL: $19.99 is 18.5% ABOVE market
+
+[94/208] 🔍 Uso-Hachi (Alternate Art)
+   API says: $27.84 listing vs $35.31 market (21.2% off)
+    📋 Fetching listings...
+       Found 8 EN NM listings (skipped: 1 non-EN, 1 cond)
+       Lowest: $40.00
+   ❌ NOT A DEAL: $40.00 is 13.3% ABOVE market
+
+[95/208] 🔍 DON!! Card (Rob Lucci) (Gold)
+   API says: $43.99 listing vs $55.73 market (21.1% off)
+    📋 Fetching listings...
+       Found 2 EN NM listings (skipped: 4 non-EN, 4 cond)
+       Lowest: $43.99
+   ✅ VERIFIED: $43.99 (21.1% below market)
+
+[96/208] 🔍 Monkey.D.Luffy (118)
+   API says: $12.11 listing vs $15.29 market (20.8% off)
+    📋 Fetching listings...
+       Found 7 EN NM listings (skipped: 0 non-EN, 3 cond)
+       Lowest: $15.95
+   ❌ NOT A DEAL: $15.95 is 4.3% ABOVE market
+
+[97/208] 🔍 Monkey.D.Luffy (012) (Alternate Art)
+   API says: $69.00 listing vs $86.85 market (20.6% off)
+    📋 Fetching listings...
+       Found 4 EN NM listings (skipped: 1 non-EN, 5 cond)
+       Lowest: $67.56
+   ✅ VERIFIED: $67.56 (22.2% below market)
+
+[98/208] 🔍 Franky - ST01-010 (Alternate Art)
+   API says: $10.00 listing vs $12.54 market (20.3% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $11.35
+   ⚠️  Small: $11.35 (only 9.5% off, was 20.3%)
+
+[99/208] 🔍 Monkey.D.Luffy (003)
+   API says: $7.99 listing vs $10.01 market (20.2% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $7.98
+   ✅ VERIFIED: $7.98 (20.3% below market)
+
+[100/208] 🔍 Sanji (Alternate Art)
+   API says: $24.99 listing vs $31.26 market (20.1% off)
+    📋 Fetching listings...
+       Found 5 EN NM listings (skipped: 3 non-EN, 2 cond)
+       Lowest: $48.95
+   ❌ NOT A DEAL: $48.95 is 56.6% ABOVE market
+
+[101/208] 🔍 Monkey.D.Luffy (061) (Parallel)
+   API says: $132.89 listing vs $166.35 market (20.1% off)
+    📋 Fetching listings...
+       Found 2 EN NM listings (skipped: 7 non-EN, 1 cond)
+       Lowest: $130.99
+   ✅ VERIFIED: $130.99 (21.3% below market)
+
+[102/208] 🔍 Mr.2.Bon.Kurei (Bentham) (Reprint)
+   API says: $21.09 listing vs $26.40 market (20.1% off)
+    📋 Fetching listings...
+       Found 6 EN NM listings (skipped: 3 non-EN, 1 cond)
+       Lowest: $33.31
+   ❌ NOT A DEAL: $33.31 is 26.2% ABOVE market
+
+[103/208] 🔍 Inazuma
+   API says: $18.00 listing vs $22.47 market (19.9% off)
+    📋 Fetching listings...
+       Found 8 EN NM listings (skipped: 0 non-EN, 2 cond)
+       Lowest: $19.99
+   ✅ VERIFIED: $19.99 (11.0% below market)
+
+[104/208] 🔍 Extra Booster: Memorial Collection
+   API says: $22.97 listing vs $28.60 market (19.7% off)
+    📋 Fetching listings...
+       Found 6 EN NM listings (skipped: 1 non-EN, 1 cond)
+       Lowest: $22.98
+   ✅ VERIFIED: $22.98 (19.7% below market)
+
+[105/208] 🔍 Dracule Mihawk - OP14-119
+   API says: $24.14 listing vs $29.99 market (19.5% off)
+    📋 Fetching listings...
+       Found 8 EN NM listings (skipped: 0 non-EN, 2 cond)
+       Lowest: $25.89
+   ✅ VERIFIED: $25.89 (13.7% below market)
+
+[106/208] 🔍 Sabo (Premium Card Collection -Leader Collection-)
+   API says: $15.00 listing vs $18.61 market (19.4% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $18.75
+   ❌ NOT A DEAL: $18.75 is 0.8% ABOVE market
+
+[107/208] 🔍 DON!! Card (Kalgara) (Gold)
+   API says: $45.00 listing vs $55.78 market (19.3% off)
+    📋 Fetching listings...
+       Found 4 EN NM listings (skipped: 5 non-EN, 1 cond)
+       Lowest: $55.91
+   ❌ NOT A DEAL: $55.91 is 0.2% ABOVE market
+
+[108/208] 🔍 Ultra Deck: The Three Captains
+   API says: $60.00 listing vs $74.05 market (19% off)
+    📋 Fetching listings...
+       Found 8 EN NM listings (skipped: 1 non-EN, 1 cond)
+       Lowest: $79.99
+   ❌ NOT A DEAL: $79.99 is 8.0% ABOVE market
+
+[109/208] 🔍 Uta - OP01-005 (Premium Card Collection -Uta-)
+   API says: $18.00 listing vs $22.20 market (18.9% off)
+    📋 Fetching listings...
+       Found 9 EN NM listings (skipped: 0 non-EN, 1 cond)
+       Lowest: $19.00
+   ✅ VERIFIED: $19.00 (14.4% below market)
+
+[110/208] 🔍 Trafalgar Law - OP14-001 (Alternate Art)
+   API says: $118.99 listing vs $146.66 market (18.9% off)
+    📋 Fetching listings...
