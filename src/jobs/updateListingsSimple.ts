@@ -436,9 +436,9 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
   }
   
   const request = context.request;
-  // Fixed 2 second delay - reliable and won't trigger rate limits
-  // 1454 cards × 2s = ~50 minutes total
-  const rateLimiter = new SimpleRateLimiter(2000);
+  // Fixed 1 second delay - same as sales scraper
+  // 1454 cards × 1s = ~25 minutes total
+  const rateLimiter = new SimpleRateLimiter(1000);
   const startTime = Date.now();
   
   let totalUpdated = 0;
