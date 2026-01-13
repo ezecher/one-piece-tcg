@@ -362,9 +362,22 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
     ...(proxyConfig && { proxy: proxyConfig }),
   });
   
+  // Test proxy by checking our external IP
+  const page = context.pages()[0] || await context.newPage();
+  
+  if (proxyConfig) {
+    console.log('Testing proxy connection...');
+    try {
+      await page.goto('https://api.ipify.org?format=json', { timeout: 30000 });
+      const ipText = await page.textContent('body');
+      console.log(`Proxy IP: ${ipText}`);
+    } catch (e) {
+      console.log('Warning: Could not verify proxy IP');
+    }
+  }
+  
   // Visit TCGplayer first to establish session cookies
   console.log('Establishing session with TCGplayer...');
-  const page = context.pages()[0] || await context.newPage();
   try {
     await page.goto('https://www.tcgplayer.com/search/one-piece-card-game/product?productLineName=one-piece-card-game&view=grid', { 
       waitUntil: 'domcontentloaded',
