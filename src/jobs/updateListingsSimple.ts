@@ -31,6 +31,7 @@ interface ListingResult {
   listingCount: number;
   currentQuantity: number;
   rateLimited: boolean;
+  fromUi?: boolean;
 }
 
 /**
@@ -80,6 +81,59 @@ class AdaptiveRateLimiter {
   
   isSlowed(): boolean {
     return this.currentDelay > this.minDelay * 2;
+  }
+}
+
+/**
+ * Fetch listings via UI scraping (slower but more reliable)
+ */
+async function fetchListingsViaUI(
+  page: Page,
+  productId: number,
+  tcgUrl: string
+): Promise<ListingResult> {
+  try {
+    const url = tcgUrl || `https://www.tcgplayer.com/product/${productId}`;
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(2000);
+    
+    // Look for the lowest price in the listings
+    const priceSelectors = [
+      '.listing-item__listing-data__info__price',
+      '[class*="listing"] [class*="price"]',
+      '.product-details__market-price',
+    ];
+    
+    let lowestPrice: number | null = null;
+    
+    for (const selector of priceSelectors) {
+      const priceElements = await page.$$(selector);
+      for (const el of priceElements) {
+        const text = await el.textContent();
+        if (text) {
+          const match = text.match(/\$?([\d,]+\.?\d*)/);
+          if (match) {
+            const price = parseFloat(match[1].replace(',', ''));
+            if (!isNaN(price) && price > 0) {
+              if (lowestPrice === null || price < lowestPrice) {
+                lowestPrice = price;
+              }
+            }
+          }
+        }
+      }
+      if (lowestPrice !== null) break;
+    }
+    
+    return {
+      lowestPrice,
+      listingCount: lowestPrice ? 1 : 0,
+      currentQuantity: 0,
+      rateLimited: false,
+      fromUi: true,
+    };
+  } catch (error) {
+    return { lowestPrice: null, listingCount: 0, currentQuantity: 0, rateLimited: false };
   }
 }
 
@@ -173,30 +227,55 @@ async function fetchListings(
  */
 async function processCardListings(
   request: APIRequestContext,
+  page: Page,
   card: PgCard,
-  rateLimiter: AdaptiveRateLimiter
-): Promise<{ updated: boolean; rateLimited: boolean; price: number | null }> {
+  rateLimiter: AdaptiveRateLimiter,
+  useUiFallback: boolean = true
+): Promise<{ updated: boolean; rateLimited: boolean; price: number | null; usedUi: boolean }> {
+  // Try API first
   const result = await fetchListings(request, card.product_id);
+  
+  if (result.rateLimited && useUiFallback) {
+    // API rate limited - try UI scraping instead
+    console.log(' (trying UI fallback...)');
+    const uiResult = await fetchListingsViaUI(page, card.product_id, card.tcg_url || '');
+    
+    if (uiResult.lowestPrice !== null) {
+      await pgUpdateCardListings(
+        card.product_id,
+        uiResult.lowestPrice,
+        uiResult.lowestPrice,
+        uiResult.listingCount,
+        uiResult.currentQuantity
+      );
+      rateLimiter.recordSuccess();
+      return { updated: true, rateLimited: false, price: uiResult.lowestPrice, usedUi: true };
+    }
+    
+    // UI also failed
+    rateLimiter.recordRateLimit();
+    return { updated: false, rateLimited: true, price: null, usedUi: true };
+  }
   
   if (result.rateLimited) {
     rateLimiter.recordRateLimit();
-    return { updated: false, rateLimited: true, price: null };
+    return { updated: false, rateLimited: true, price: null, usedUi: false };
   }
   
   if (result.lowestPrice !== null) {
     await pgUpdateCardListings(
       card.product_id,
       result.lowestPrice,
-      result.lowestPrice, // Use same for market price
+      result.lowestPrice,
       result.listingCount,
       result.currentQuantity
     );
     rateLimiter.recordSuccess();
-    return { updated: true, rateLimited: false, price: result.lowestPrice };
+    return { updated: true, rateLimited: false, price: result.lowestPrice, usedUi: false };
   }
   
   rateLimiter.recordSuccess();
-  return { updated: false, rateLimited: false, price: null };
+  return { updated: false, rateLimited: false, price: null, usedUi: false };
 }
 
 /**
@@ -254,12 +333,28 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
     viewport: { width: 1280, height: 800 },
   });
   
+  // Visit TCGplayer first to establish session cookies
+  console.log('Establishing session with TCGplayer...');
+  const page = context.pages()[0] || await context.newPage();
+  try {
+    await page.goto('https://www.tcgplayer.com/search/one-piece-card-game/product?productLineName=one-piece-card-game&view=grid', { 
+      waitUntil: 'domcontentloaded',
+      timeout: 30000 
+    });
+    await page.waitForTimeout(3000); // Let cookies/session establish
+    console.log('Session established ✓');
+  } catch (e) {
+    console.log('Warning: Could not establish session, continuing anyway...');
+  }
+  
   const request = context.request;
-  const rateLimiter = new AdaptiveRateLimiter(1000, 500, 15000);
+  // Start MUCH slower to avoid immediate rate limiting (5 seconds between requests)
+  const rateLimiter = new AdaptiveRateLimiter(5000, 2000, 30000);
   const startTime = Date.now();
   
   let totalUpdated = 0;
   let totalRateLimited = 0;
+  let totalUiFallbacks = 0;
   let processed = 0;
   
   try {
@@ -267,24 +362,16 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
       const card = cards[i];
       process.stdout.write(`[${i + 1}/${cards.length}] ${card.name.substring(0, 40).padEnd(40)}...`);
       
-      const result = await processCardListings(request, card, rateLimiter);
+      const result = await processCardListings(request, page, card, rateLimiter, true);
+      
+      if (result.usedUi) totalUiFallbacks++;
       
       if (result.rateLimited) {
-        console.log(' (rate limited - retrying)');
-        // Wait and retry once
-        await rateLimiter.wait();
-        const retry = await processCardListings(request, card, rateLimiter);
-        if (retry.updated) {
-          console.log(` $${retry.price?.toFixed(2)}`);
-          totalUpdated++;
-        } else if (retry.rateLimited) {
-          console.log(' (still rate limited - skipping)');
-          totalRateLimited++;
-        } else {
-          console.log(' (no listings)');
-        }
+        console.log(' (rate limited - skipping)');
+        totalRateLimited++;
       } else if (result.updated) {
-        console.log(` $${result.price?.toFixed(2)}`);
+        const source = result.usedUi ? ' [UI]' : '';
+        console.log(` $${result.price?.toFixed(2)}${source}`);
         totalUpdated++;
       } else {
         console.log(' (no listings)');
@@ -304,7 +391,8 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
     console.log('\n=== Summary ===');
     console.log(`Products processed: ${processed}`);
     console.log(`Listings updated: ${totalUpdated}`);
-    if (totalRateLimited > 0) console.log(`Rate limited: ${totalRateLimited}`);
+    if (totalUiFallbacks > 0) console.log(`Used UI fallback: ${totalUiFallbacks}`);
+    if (totalRateLimited > 0) console.log(`Rate limited (skipped): ${totalRateLimited}`);
     console.log(`Time: ${elapsed}s (${(cards.length / parseFloat(elapsed)).toFixed(1)} products/sec)`);
     
     await context.close();
