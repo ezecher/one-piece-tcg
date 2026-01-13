@@ -1,13 +1,10 @@
-# Cron job for daily LISTINGS update
+# Cron job for daily LISTINGS update (PostgreSQL)
 FROM mcr.microsoft.com/playwright:v1.57.0-noble
 
 WORKDIR /app
 
-# Install build tools for native modules (better-sqlite3)
+# Install build tools for native modules
 RUN apt-get update && apt-get install -y build-essential python3 && rm -rf /var/lib/apt/lists/*
-
-# Create data directory for SQLite
-RUN mkdir -p /app/data
 
 # Install dependencies
 COPY package*.json ./
@@ -27,8 +24,7 @@ COPY src/server/public ./dist/server/public
 COPY src/db/schema.sql ./dist/db/schema.sql
 
 ENV NODE_ENV=production
-ENV DB_PATH=/app/data/tcg_sales.db
+# DATABASE_URL is passed from Railway environment
 
 # Run the listings script
 CMD ["./scripts/daily-listings.sh"]
-
