@@ -417,7 +417,13 @@ export async function pgGetAllCards(): Promise<PgCard[]> {
     FROM cards c
     ORDER BY c.market_price DESC NULLS LAST
   `);
-  return result.rows;
+  // Convert string numbers to actual numbers (PostgreSQL returns DECIMAL as strings)
+  return result.rows.map(row => ({
+    ...row,
+    market_price: row.market_price ? parseFloat(String(row.market_price)) : null,
+    lowest_listing: row.lowest_listing ? parseFloat(String(row.lowest_listing)) : null,
+    last_sale_price: row.last_sale_price ? parseFloat(String(row.last_sale_price)) : null,
+  }));
 }
 
 export async function pgGetCardByProductId(productId: number): Promise<PgCard | null> {
@@ -429,7 +435,15 @@ export async function pgGetCardByProductId(productId: number): Promise<PgCard | 
     FROM cards c
     WHERE c.product_id = $1
   `, [productId]);
-  return result.rows[0] || null;
+  const row = result.rows[0];
+  if (!row) return null;
+  // Convert string numbers to actual numbers
+  return {
+    ...row,
+    market_price: row.market_price ? parseFloat(String(row.market_price)) : null,
+    lowest_listing: row.lowest_listing ? parseFloat(String(row.lowest_listing)) : null,
+    last_sale_price: row.last_sale_price ? parseFloat(String(row.last_sale_price)) : null,
+  };
 }
 
 export async function pgCountCards(): Promise<number> {
