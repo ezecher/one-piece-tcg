@@ -54,52 +54,22 @@ interface ListingResult {
 }
 
 /**
- * Adaptive rate limiter - starts at a reasonable speed, slows on 403s
+ * Simple fixed-rate limiter - just wait a consistent amount between requests
+ * No adaptive logic - keeps things simple and predictable
  */
-class AdaptiveRateLimiter {
-  private currentDelay: number;
-  private minDelay: number;
-  private maxDelay: number;
-  private successCount = 0;
-  private readonly successThreshold = 10;
-  private readonly speedUpFactor = 0.8;
-  private readonly slowDownFactor = 3;
+class SimpleRateLimiter {
+  private delay: number;
   
-  constructor(startDelay = 1000, minDelay = 500, maxDelay = 15000) {
-    this.currentDelay = startDelay;
-    this.minDelay = minDelay;
-    this.maxDelay = maxDelay;
-  }
-  
-  recordSuccess(): void {
-    this.successCount++;
-    if (this.successCount >= this.successThreshold && this.currentDelay > this.minDelay) {
-      const oldDelay = this.currentDelay;
-      this.currentDelay = Math.max(Math.round(this.currentDelay * this.speedUpFactor), this.minDelay);
-      if (this.currentDelay !== oldDelay) {
-        console.log(`  📈 Speed up: ${oldDelay}ms → ${this.currentDelay}ms`);
-      }
-      this.successCount = 0;
-    }
-  }
-  
-  recordRateLimit(): void {
-    this.successCount = 0;
-    const oldDelay = this.currentDelay;
-    this.currentDelay = Math.min(this.currentDelay * this.slowDownFactor, this.maxDelay);
-    console.log(`  🐢 Rate limited! Slowing: ${oldDelay}ms → ${this.currentDelay}ms`);
-  }
-  
-  getDelay(): number {
-    return this.currentDelay;
+  constructor(delayMs: number = 2000) {
+    this.delay = delayMs;
   }
   
   async wait(): Promise<void> {
-    await new Promise(r => setTimeout(r, this.currentDelay));
+    await new Promise(r => setTimeout(r, this.delay));
   }
   
-  isSlowed(): boolean {
-    return this.currentDelay > this.minDelay * 2;
+  getDelay(): number {
+    return this.delay;
   }
 }
 
@@ -314,7 +284,6 @@ async function processCardListings(
   request: APIRequestContext,
   page: Page,
   card: PgCard,
-  rateLimiter: AdaptiveRateLimiter,
   useUiFallback: boolean = true,
   debug: boolean = false
 ): Promise<{ updated: boolean; rateLimited: boolean; price: number | null; usedUi: boolean }> {
@@ -334,17 +303,14 @@ async function processCardListings(
         uiResult.listingCount,
         uiResult.currentQuantity
       );
-      rateLimiter.recordSuccess();
       return { updated: true, rateLimited: false, price: uiResult.lowestPrice, usedUi: true };
     }
     
     // UI also failed
-    rateLimiter.recordRateLimit();
     return { updated: false, rateLimited: true, price: null, usedUi: true };
   }
   
   if (result.rateLimited) {
-    rateLimiter.recordRateLimit();
     return { updated: false, rateLimited: true, price: null, usedUi: false };
   }
   
@@ -356,11 +322,9 @@ async function processCardListings(
       result.listingCount,
       result.currentQuantity
     );
-    rateLimiter.recordSuccess();
     return { updated: true, rateLimited: false, price: result.lowestPrice, usedUi: false };
   }
   
-  rateLimiter.recordSuccess();
   return { updated: false, rateLimited: false, price: null, usedUi: false };
 }
 
@@ -472,9 +436,9 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
   }
   
   const request = context.request;
-  // Balanced speed - 800ms between requests to keep proxy stable
-  // Can slow down if rate limited, speed up after consistent success
-  const rateLimiter = new AdaptiveRateLimiter(800, 500, 10000);
+  // Fixed 2 second delay - reliable and won't trigger rate limits
+  // 1454 cards × 2s = ~50 minutes total
+  const rateLimiter = new SimpleRateLimiter(2000);
   const startTime = Date.now();
   
   let totalUpdated = 0;
@@ -490,31 +454,28 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
     for (let i = 0; i < cards.length; i++) {
       const card = cards[i];
       
-      // Progress indicator every 50 cards or for first few
-      const showProgress = i < 5 || i % 50 === 0;
-      if (showProgress) {
-        process.stdout.write(`[${i + 1}/${cards.length}] ${card.name.substring(0, 40).padEnd(40)}...`);
-      }
+      // Show progress for every card
+      process.stdout.write(`[${i + 1}/${cards.length}] ${card.name.substring(0, 35).padEnd(35)}...`);
       
       // Only use UI fallback if API is consistently failing (>50% failure rate after 10+ tries)
       const useUiFallback = apiFailures > 10 && apiFailures > apiSuccesses;
       const debug = i < 3;
-      const result = await processCardListings(request, page, card, rateLimiter, useUiFallback, debug);
+      const result = await processCardListings(request, page, card, useUiFallback, debug);
       
       if (result.usedUi) totalUiFallbacks++;
       
       if (result.rateLimited) {
         apiFailures++;
-        if (showProgress) console.log(' (rate limited)');
+        console.log(' (rate limited)');
         totalRateLimited++;
       } else if (result.updated) {
         apiSuccesses++;
         const source = result.usedUi ? ' [UI]' : '';
-        if (showProgress) console.log(` $${result.price?.toFixed(2)}${source}`);
+        console.log(` $${result.price?.toFixed(2)}${source}`);
         totalUpdated++;
       } else {
         apiSuccesses++; // No listings is still a successful API call
-        if (showProgress) console.log(' (no listings)');
+        console.log(' (no listings)');
       }
       
       processed++;
