@@ -410,6 +410,7 @@ program
   .option('-p, --product <id>', 'Specific product ID to refresh')
   .option('-w, --workers <number>', 'Parallel workers (ignored - always uses 1)', '1')
   .option('--headless', 'Run browser in headless mode (default: visible)')
+  .option('--no-proxy', 'Disable proxy even if configured')
   .action(async (options) => {
     try {
       await updateListingsSimple({
@@ -417,6 +418,7 @@ program
         limit: options.limit ? parseInt(options.limit, 10) : undefined,
         productIds: options.product ? [parseInt(options.product, 10)] : undefined,
         headless: options.headless === true,
+        useProxy: options.proxy !== false,
       });
     } catch (error) {
       console.error('Failed to refresh listings:', error);

@@ -24,6 +24,25 @@ export interface UpdateListingsOptions {
   limit?: number;            // Max number of products to process
   headless?: boolean;
   workers?: number;          // Number of parallel browser tabs (1-4)
+  useProxy?: boolean;        // Use residential proxy from environment
+}
+
+/**
+ * Get proxy configuration from environment
+ * Set these env vars:
+ *   PROXY_SERVER=http://proxy.example.com:port
+ *   PROXY_USERNAME=your_username
+ *   PROXY_PASSWORD=your_password
+ */
+function getProxyConfig(): { server: string; username?: string; password?: string } | undefined {
+  const server = process.env.PROXY_SERVER;
+  if (!server) return undefined;
+  
+  return {
+    server,
+    username: process.env.PROXY_USERNAME,
+    password: process.env.PROXY_PASSWORD,
+  };
 }
 
 interface ListingResult {
@@ -288,10 +307,19 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
     limit, 
     headless = false,
     workers = 1,
+    useProxy = true,  // Default to using proxy if available
   } = options;
   
   console.log('\n=== Update Listings Job ===');
   console.log(`Headless: ${headless}`);
+  
+  // Check for proxy configuration
+  const proxyConfig = useProxy ? getProxyConfig() : undefined;
+  if (proxyConfig) {
+    console.log(`Proxy: ${proxyConfig.server} ✓`);
+  } else if (useProxy) {
+    console.log('Proxy: Not configured (set PROXY_SERVER env var)');
+  }
   if (setName) console.log(`Set filter: ${setName}`);
   if (limit) console.log(`Limit: ${limit} products`);
   console.log('');
@@ -331,6 +359,7 @@ export async function updateListingsSimple(options: UpdateListingsOptions = {}):
   const context = await chromium.launchPersistentContext(USER_DATA_DIR, {
     headless,
     viewport: { width: 1280, height: 800 },
+    ...(proxyConfig && { proxy: proxyConfig }),
   });
   
   // Visit TCGplayer first to establish session cookies
