@@ -16,15 +16,14 @@ const CHROME_USER_DATA = '/Users/evanzecher/Library/Application Support/Google/C
 const CHROME_PROFILE = 'Default';
 
 import { 
-  getAllCards, 
-  saveSaleEvents, 
-  startScrapeRun, 
-  updateScrapeRun, 
-  finishScrapeRun,
-  countSales,
-  initializeDb,
-  Card,
-} from '../db/client.js';
+  initPostgres,
+  pgGetAllCards, 
+  pgSaveSaleEvent, 
+  pgStartScrapeRun, 
+  pgCompleteScrapeRun,
+  pgCountSales,
+  PgCard,
+} from '../db/postgres.js';
 import { 
   getProductSales, 
   NormalizedSale, 
@@ -70,17 +69,29 @@ function convertSalesForDb(sales: NormalizedSale[]): Array<{
  */
 async function processCardSales(
   page: Page,
-  card: Card,
+  card: PgCard,
   runId: number,
   request?: any,
   salesOptions?: GetProductSalesOptions
 ): Promise<{ salesFound: number; salesInserted: number; error: boolean; rateLimited: boolean }> {
   try {
-    const result = await getProductSales(page, card.product_id, card.tcg_url, request, salesOptions);
+    const result = await getProductSales(page, card.product_id, card.tcg_url || '', request, salesOptions);
     
     if (result.sales.length > 0) {
-      const inserted = saveSaleEvents(card.product_id, convertSalesForDb(result.sales), runId);
-      return { salesFound: result.sales.length, salesInserted: inserted, error: false, rateLimited: false };
+      // Save each sale to PostgreSQL
+      let insertedCount = 0;
+      for (const sale of result.sales) {
+        const saved = await pgSaveSaleEvent({
+          product_id: card.product_id,
+          sold_at: sale.soldAt,
+          condition: sale.condition,
+          variant: sale.variant,
+          quantity: sale.quantity,
+          price: sale.price,
+        });
+        if (saved) insertedCount++;
+      }
+      return { salesFound: result.sales.length, salesInserted: insertedCount, error: false, rateLimited: false };
     }
     
     return { salesFound: 0, salesInserted: 0, error: false, rateLimited: result.rateLimited };
@@ -118,30 +129,31 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
   if (limit) console.log(`Limit: ${limit} products`);
   console.log('');
   
-  // Initialize database
-  initializeDb();
+  // Initialize PostgreSQL database
+  await initPostgres();
   
-  const initialSalesCount = countSales();
+  const initialSalesCount = await pgCountSales();
   console.log(`Current sales in DB: ${initialSalesCount}`);
   
   // Get cards to process
-  let cards: Card[];
+  const allCards = await pgGetAllCards();
+  let cards: PgCard[];
   
   if (collectionOnly) {
     // Only process cards in the user's collection
-    cards = getAllCards().filter(c => c.in_collection > 0);
+    cards = allCards.filter(c => c.in_collection);
     console.log(`Processing ${cards.length} collection items ⭐`);
   } else if (productIds && productIds.length > 0) {
-    cards = getAllCards().filter(c => productIds.includes(c.product_id));
+    cards = allCards.filter(c => productIds.includes(c.product_id));
     console.log(`Processing ${cards.length} specified products`);
   } else if (setName) {
     // Filter by set name (case-insensitive partial match)
-    cards = getAllCards().filter(c => 
+    cards = allCards.filter(c => 
       c.set_name?.toLowerCase().includes(setName.toLowerCase())
     );
     console.log(`Processing ${cards.length} products from "${setName}"`);
   } else {
-    cards = getAllCards();
+    cards = allCards;
     console.log(`Processing all ${cards.length} products`);
   }
   
@@ -156,7 +168,7 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
   }
   
   // Start scrape run
-  const runId = startScrapeRun('sales');
+  const runId = await pgStartScrapeRun('sales', collectionOnly ? 'collection' : 'all');
   console.log(`Started scrape run #${runId}\n`);
   
   let totalSalesScraped = 0;
@@ -229,10 +241,7 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
         }
         
         productsProcessed++;
-        updateScrapeRun(runId, { 
-          products_scraped: productsProcessed,
-          sales_scraped: totalSalesScraped,
-        });
+        // Progress updates now happen at the end with pgCompleteScrapeRun
         
         // Use adaptive delay
         if (i < cards.length - 1) {
@@ -272,11 +281,6 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
         const delayInfo = rateLimiter.isSlowed() ? ` | Delay: ${rateLimiter.getDelay()}ms` : '';
         process.stdout.write(`\r⏳ Progress: ${pct}% (${productsProcessed}/${cards.length}) | New sales: ${totalSalesScraped}${delayInfo}   `);
         
-        updateScrapeRun(runId, { 
-          products_scraped: productsProcessed,
-          sales_scraped: totalSalesScraped,
-        });
-        
         // Use adaptive delay
         if (i + numWorkers < cards.length) {
           await rateLimiter.wait();
@@ -295,20 +299,30 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
     console.log(`Errors: ${totalErrors}`);
     console.log(`Time: ${elapsed}s (${(cards.length / parseFloat(elapsed)).toFixed(1)} products/sec)`);
     
-    const finalSalesCount = countSales();
+    const finalSalesCount = await pgCountSales();
     console.log(`\nSales in DB: ${initialSalesCount} → ${finalSalesCount} (+${finalSalesCount - initialSalesCount})`);
     
     // Finish run
-    const status = totalErrors === 0 ? 'success' : 
+    const status = totalErrors === 0 ? 'completed' : 
                    totalErrors < productsProcessed ? 'partial' : 'error';
-    finishScrapeRun(runId, status);
+    await pgCompleteScrapeRun(runId, {
+      products_scraped: productsProcessed,
+      new_sales: totalSalesScraped,
+      errors: totalErrors,
+      status,
+    });
     
     await context.close();
     console.log('\nBrowser closed.');
     
   } catch (error) {
     console.error('Job failed:', error);
-    finishScrapeRun(runId, 'error', String(error));
+    await pgCompleteScrapeRun(runId, {
+      products_scraped: productsProcessed,
+      new_sales: totalSalesScraped,
+      errors: totalErrors + 1,
+      status: 'error',
+    });
     throw error;
   }
 }

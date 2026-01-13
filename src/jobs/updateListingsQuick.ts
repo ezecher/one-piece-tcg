@@ -62,15 +62,21 @@ class AdaptiveRateLimiter {
 }
 
 import { 
-  getAllCards, 
-  initializeDb,
-  updateCardListings,
-  isSuspiciousPrice,
-  getCachedVerifiedPrice,
-  getLastSalePrice,
-  recordSuspiciousListing,
-  Card,
-} from '../db/client.js';
+  initPostgres,
+  pgGetAllCards,
+  pgUpdateCardListings,
+  PgCard,
+} from '../db/postgres.js';
+
+// These SQLite-specific functions are no longer used - simplified for PostgreSQL
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function isSuspiciousPrice(_productId: number, _price: number): boolean { return false; }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function getCachedVerifiedPrice(_productId: number, _apiPrice: number): number | null { return null; }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function getLastSalePrice(_productId: number): number | null { return null; }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function recordSuspiciousListing(_productId: number, _apiPrice: number, _verifiedPrice: number, _lastSale: number, _discountClaimed: number, _discountActual: number): void {}
 
 export interface UpdateListingsOptions {
   productIds?: number[];     // Specific products to update
@@ -501,7 +507,7 @@ interface ProcessCardResult {
  */
 async function processCard(
   page: Page,
-  card: Card,
+  card: PgCard,
   useApi: boolean,
   minDealPct: number = 5,  // If price is this % below last sale, flag for verification
   skipUiFallback: boolean = false  // If true, skip UI fallback on API failure
@@ -540,22 +546,21 @@ async function processCard(
             }
           }
         }
-      } else if (!skipUiFallback) {
+      } else if (!skipUiFallback && card.tcg_url) {
         result = await fetchListingsViaUI(page, card.tcg_url);
         if (result.listingCount > 0) uiFallback = true;
       }
-    } else {
+    } else if (card.tcg_url) {
       result = await fetchListingsViaUI(page, card.tcg_url);
     }
     
     if (result.lowestPrice !== null || result.currentQuantity > 0) {
-      updateCardListings(
+      await pgUpdateCardListings(
         card.product_id,
         result.lowestPrice,
         result.lowestWithShipping || result.lowestPrice,
         result.listingCount,
-        result.currentQuantity,
-        result.currentSellers
+        result.currentQuantity
       );
       
       return { updated: true, apiSuccess, uiFallback, usedCache, needsVerification, rateLimited: false, result };
@@ -589,22 +594,23 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
   if (limit) console.log(`Limit: ${limit} products`);
   console.log('');
   
-  // Initialize database
-  initializeDb();
+  // Initialize PostgreSQL database
+  await initPostgres();
   
   // Get cards to process
-  let cards: Card[];
+  const allCards = await pgGetAllCards();
+  let cards: PgCard[];
   
   if (productIds && productIds.length > 0) {
-    cards = getAllCards().filter(c => productIds.includes(c.product_id));
+    cards = allCards.filter(c => productIds.includes(c.product_id));
     console.log(`Processing ${cards.length} specified products`);
   } else if (setName) {
-    cards = getAllCards().filter(c => 
+    cards = allCards.filter(c => 
       c.set_name?.toLowerCase().includes(setName.toLowerCase())
     );
     console.log(`Processing ${cards.length} products from "${setName}"`);
   } else {
-    cards = getAllCards();
+    cards = allCards;
     console.log(`Processing all ${cards.length} products`);
   }
   
@@ -635,13 +641,14 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
     let processed = 0;
     
     // Queue for cards that need real-time verification
-    const verifyQueue: { card: Card; apiPrice: number; lastSale: number }[] = [];
+    const verifyQueue: { card: PgCard; apiPrice: number; lastSale: number }[] = [];
     let verifiedCount = 0;
     let verifiedFake = 0;
     
     // Verifier function - runs in parallel with main scraper
-    async function verifyDeal(verifyPage: Page, card: Card, apiPrice: number, lastSale: number) {
+    async function verifyDeal(verifyPage: Page, card: PgCard, apiPrice: number, lastSale: number) {
       try {
+        if (!card.tcg_url) return; // Skip if no URL
         const uiResult = await fetchListingsViaUI(verifyPage, card.tcg_url);
         const verifiedPrice = uiResult.lowestPrice;
         
@@ -662,13 +669,12 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
             );
             
             // Update DB with verified price
-            updateCardListings(
+            await pgUpdateCardListings(
               card.product_id,
               verifiedPrice,
               verifiedPrice,
               uiResult.listingCount,
-              uiResult.currentQuantity,
-              uiResult.currentSellers
+              uiResult.currentQuantity
             );
             
             verifiedFake++;
@@ -786,7 +792,7 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
       })();
       
       // Track cards that need retry due to rate limiting
-      const retryQueue: Card[] = [];
+      const retryQueue: PgCard[] = [];
       
       // Process cards in parallel batches
       for (let i = 0; i < cards.length; i += scraperPages.length) {

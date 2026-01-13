@@ -8,28 +8,7 @@ import express from 'express';
 import cors from 'cors';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { writeFileSync, readFileSync } from 'fs';
-import { DB_PATH } from '../config.js';
-import {
-  initializeDb,
-  closeDb,
-  getAllCards,
-  getAllCardsWithLastSale,
-  getCardStats,
-  getPotentialDeals,
-  getSalesForProduct,
-  getTopVolume24h,
-  getRecentRuns,
-  countCards,
-  countSales,
-  getCollectionCards,
-  getCollectionCount,
-  addToCollection,
-  removeFromCollection,
-  setCollectionQty,
-  Card,
-  getCardByProductId,
-} from '../db/client.js';
+// No longer need fs or DB_PATH - all data in PostgreSQL
 import {
   initPostgres,
   getPool,
@@ -44,6 +23,14 @@ import {
   addToUserWatchlist,
   removeFromUserWatchlist,
   updateUserWatchlistItem,
+  // New PostgreSQL card/sales functions
+  pgGetAllCards,
+  pgGetCardByProductId,
+  pgCountCards,
+  pgCountSales,
+  pgGetSalesForProduct,
+  pgGetRecentRuns,
+  PgCard,
 } from '../db/postgres.js';
 import {
   hashPassword,
@@ -66,16 +53,15 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(join(__dirname, 'public')));
 
-// Initialize databases
-initializeDb();
-
-// Initialize PostgreSQL for users (if DATABASE_URL is set)
+// Initialize PostgreSQL (required - all data now in PostgreSQL)
 if (process.env.DATABASE_URL) {
   initPostgres().catch(err => {
     console.error('Failed to initialize PostgreSQL:', err);
+    process.exit(1);
   });
 } else {
-  console.log('PostgreSQL not configured (DATABASE_URL not set) - auth disabled');
+  console.error('DATABASE_URL is required! PostgreSQL is now the primary database.');
+  process.exit(1);
 }
 
 // ============ Auth Routes ============
@@ -209,16 +195,20 @@ app.get('/api/user/collection', requireAuth, async (req, res) => {
     const userId = req.userId!;
     const collectionItems = await getUserCollection(userId);
     
-    // Get card details for each item
-    const cards = collectionItems.map(item => {
-      const card = getCardByProductId(item.product_id);
+    // Get card details for each item (using PostgreSQL)
+    const cardPromises = collectionItems.map(async (item) => {
+      const card = await pgGetCardByProductId(item.product_id);
+      if (!card) return null;
       return {
         ...card,
         quantity: item.quantity,
         notes: item.notes,
         added_at: item.added_at,
       };
-    }).filter(c => c !== null);
+    });
+    
+    const cardsWithNulls = await Promise.all(cardPromises);
+    const cards = cardsWithNulls.filter(c => c !== null);
     
     // Calculate totals
     const totalValue = cards.reduce((sum, c) => sum + ((c?.market_price || 0) * (c?.quantity || 1)), 0);
@@ -280,21 +270,25 @@ app.put('/api/user/collection/:productId', requireAuth, async (req, res) => {
 
 // ============ User Watchlist Routes ============
 
-// Get user's watchlist with card details
+// Get user's watchlist with card details (PostgreSQL)
 app.get('/api/user/watchlist', requireAuth, async (req, res) => {
   try {
     const userId = req.userId!;
     const watchlistItems = await getUserWatchlist(userId);
     
-    // Get full card details for each watchlist item
-    const items = watchlistItems.map(item => {
-      const card = getCardByProductId(item.product_id);
-      return card ? {
+    // Get full card details for each watchlist item (using PostgreSQL)
+    const itemPromises = watchlistItems.map(async (item) => {
+      const card = await pgGetCardByProductId(item.product_id);
+      if (!card) return null;
+      return {
         ...card,
         target_price: item.target_price,
         alerts_enabled: item.alerts_enabled,
-      } : null;
-    }).filter(Boolean);
+      };
+    });
+    
+    const itemsWithNulls = await Promise.all(itemPromises);
+    const items = itemsWithNulls.filter(Boolean);
     
     res.json({ items });
   } catch (error) {
@@ -349,12 +343,12 @@ app.put('/api/user/watchlist/:productId', requireAuth, async (req, res) => {
 
 // ============ API Routes ============
 
-// Get dashboard summary
-app.get('/api/summary', (req, res) => {
+// Get dashboard summary (PostgreSQL)
+app.get('/api/summary', async (req, res) => {
   try {
-    const cardCount = countCards();
-    const salesCount = countSales();
-    const recentRuns = getRecentRuns(5);
+    const cardCount = await pgCountCards();
+    const salesCount = await pgCountSales();
+    const recentRuns = await pgGetRecentRuns(5);
     
     res.json({
       cards: cardCount,
@@ -362,214 +356,229 @@ app.get('/api/summary', (req, res) => {
       recentRuns,
     });
   } catch (error) {
+    console.error('Summary error:', error);
     res.status(500).json({ error: String(error) });
   }
 });
 
-// Get all cards with last sale info
-app.get('/api/cards', (req, res) => {
+// Get all cards with last sale info (PostgreSQL)
+app.get('/api/cards', async (req, res) => {
   try {
-    const cards = getAllCardsWithLastSale();
+    const cards = await pgGetAllCards();
     res.json(cards);
   } catch (error) {
+    console.error('Cards error:', error);
     res.status(500).json({ error: String(error) });
   }
 });
 
-// Get card stats with averages
-app.get('/api/stats', (req, res) => {
+// Get card stats with averages (PostgreSQL)
+app.get('/api/stats', async (req, res) => {
   try {
-    const minSales = parseInt(req.query.minSales as string) || 0;
-    const stats = getCardStats(minSales);
+    // Simplified stats from PostgreSQL
+    const cards = await pgGetAllCards();
+    const stats = cards.map(card => ({
+      ...card,
+      avg_price: card.last_sale_price || card.market_price,
+    }));
     res.json(stats);
   } catch (error) {
+    console.error('Stats error:', error);
     res.status(500).json({ error: String(error) });
   }
 });
 
-// Get potential deals
-app.get('/api/deals', (req, res) => {
+// Get potential deals (PostgreSQL)
+app.get('/api/deals', async (req, res) => {
   try {
-    const minSales = parseInt(req.query.minSales as string) || 3;
     const discount = parseInt(req.query.discount as string) || 10;
-    const deals = getPotentialDeals(minSales, discount);
+    const cards = await pgGetAllCards();
+    
+    // Find cards where lowest_listing is below last_sale_price by X%
+    const deals = cards.filter(card => {
+      if (!card.lowest_listing || !card.last_sale_price) return false;
+      const discountPct = ((card.last_sale_price - card.lowest_listing) / card.last_sale_price) * 100;
+      return discountPct >= discount;
+    }).map(card => ({
+      ...card,
+      discount_pct: card.last_sale_price ? 
+        Math.round(((card.last_sale_price - (card.lowest_listing || 0)) / card.last_sale_price) * 100) : 0,
+    })).sort((a, b) => (b.discount_pct || 0) - (a.discount_pct || 0));
+    
     res.json(deals);
   } catch (error) {
+    console.error('Deals error:', error);
     res.status(500).json({ error: String(error) });
   }
 });
 
-// Get sales for a specific product
-app.get('/api/sales/:productId', (req, res) => {
+// Get sales for a specific product (PostgreSQL)
+app.get('/api/sales/:productId', async (req, res) => {
   try {
     const productId = parseInt(req.params.productId);
-    const limit = parseInt(req.query.limit as string) || 50;
-    const sales = getSalesForProduct(productId, limit);
+    const sales = await pgGetSalesForProduct(productId);
     res.json(sales);
   } catch (error) {
+    console.error('Sales error:', error);
     res.status(500).json({ error: String(error) });
   }
 });
 
-// Get top volume cards
-app.get('/api/volume', (req, res) => {
+// Get top volume cards (PostgreSQL) - based on recent sales
+app.get('/api/volume', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 20;
-    const volume = getTopVolume24h(limit);
-    res.json(volume);
+    
+    // Get cards with most recent sales activity
+    const result = await getPool().query(`
+      SELECT c.*, COUNT(se.id) as sale_count
+      FROM cards c
+      LEFT JOIN sale_events se ON c.product_id = se.product_id 
+        AND se.sold_at > NOW() - INTERVAL '24 hours'
+      GROUP BY c.id
+      ORDER BY sale_count DESC
+      LIMIT $1
+    `, [limit]);
+    
+    res.json(result.rows);
   } catch (error) {
+    console.error('Volume error:', error);
     res.status(500).json({ error: String(error) });
   }
 });
 
-// Get cards by set
-app.get('/api/sets', (req, res) => {
+// Get cards by set (PostgreSQL)
+app.get('/api/sets', async (req, res) => {
   try {
-    const cards = getAllCards();
-    const sets = new Map<string, Card[]>();
+    const result = await getPool().query(`
+      SELECT 
+        COALESCE(set_name, 'Unknown') as name,
+        COUNT(*) as count,
+        SUM(COALESCE(market_price, 0)) as "totalMarketValue"
+      FROM cards
+      GROUP BY set_name
+      ORDER BY SUM(COALESCE(market_price, 0)) DESC
+    `);
     
-    cards.forEach(card => {
-      const setName = card.set_name || 'Unknown';
-      if (!sets.has(setName)) {
-        sets.set(setName, []);
-      }
-      sets.get(setName)!.push(card);
-    });
-    
-    const result = Array.from(sets.entries()).map(([name, cards]) => ({
-      name,
-      count: cards.length,
-      totalMarketValue: cards.reduce((sum, c) => sum + (c.market_price || 0), 0),
-    })).sort((a, b) => b.totalMarketValue - a.totalMarketValue);
-    
-    res.json(result);
+    res.json(result.rows);
   } catch (error) {
+    console.error('Sets error:', error);
     res.status(500).json({ error: String(error) });
   }
 });
 
-// ============ Collection API Routes ============
+// ============ Collection API Routes (PostgreSQL) ============
 
-// Get collection cards
-app.get('/api/collection', (req, res) => {
+// Get collection cards (uses in_collection flag on cards table)
+app.get('/api/collection', async (req, res) => {
   try {
-    const cards = getCollectionCards();
-    const totalValue = cards.reduce((sum, c) => sum + (c.market_price || 0), 0);
+    const result = await getPool().query(`
+      SELECT c.*,
+        (SELECT price FROM sale_events WHERE product_id = c.product_id ORDER BY sold_at DESC LIMIT 1) as last_sale_price
+      FROM cards c
+      WHERE c.in_collection = true
+      ORDER BY c.market_price DESC NULLS LAST
+    `);
+    
+    const cards = result.rows;
+    const totalValue = cards.reduce((sum: number, c: any) => 
+      sum + ((c.market_price || 0) * (c.collection_qty || 1)), 0);
+    
     res.json({
       cards,
       count: cards.length,
       totalValue,
     });
   } catch (error) {
+    console.error('Collection error:', error);
     res.status(500).json({ error: String(error) });
   }
 });
 
-// Add to collection
-app.post('/api/collection/:productId', (req, res) => {
+// Add to collection (PostgreSQL)
+app.post('/api/collection/:productId', async (req, res) => {
   try {
     const productId = parseInt(req.params.productId);
-    const success = addToCollection(productId);
-    if (success) {
+    
+    const result = await getPool().query(
+      `UPDATE cards SET in_collection = true, collection_qty = GREATEST(collection_qty, 1) WHERE product_id = $1 RETURNING *`,
+      [productId]
+    );
+    
+    if (result.rowCount && result.rowCount > 0) {
       res.json({ success: true, message: 'Added to collection' });
     } else {
       res.status(404).json({ success: false, message: 'Card not found' });
     }
   } catch (error) {
+    console.error('Add to collection error:', error);
     res.status(500).json({ error: String(error) });
   }
 });
 
-// Remove from collection
-app.delete('/api/collection/:productId', (req, res) => {
+// Remove from collection (PostgreSQL)
+app.delete('/api/collection/:productId', async (req, res) => {
   try {
     const productId = parseInt(req.params.productId);
-    const success = removeFromCollection(productId);
-    if (success) {
+    
+    const result = await getPool().query(
+      `UPDATE cards SET in_collection = false, collection_qty = 0 WHERE product_id = $1 RETURNING *`,
+      [productId]
+    );
+    
+    if (result.rowCount && result.rowCount > 0) {
       res.json({ success: true, message: 'Removed from collection' });
     } else {
       res.status(404).json({ success: false, message: 'Card not found' });
     }
   } catch (error) {
+    console.error('Remove from collection error:', error);
     res.status(500).json({ error: String(error) });
   }
 });
 
-// Set collection quantity
-app.post('/api/collection/:productId/qty', (req, res) => {
+// Set collection quantity (PostgreSQL)
+app.post('/api/collection/:productId/qty', async (req, res) => {
   try {
     const productId = parseInt(req.params.productId);
     const quantity = parseInt(req.body?.quantity) || 0;
-    const success = setCollectionQty(productId, quantity);
-    if (success) {
+    
+    const result = await getPool().query(
+      `UPDATE cards 
+       SET collection_qty = $2, 
+           in_collection = $2 > 0
+       WHERE product_id = $1 
+       RETURNING *`,
+      [productId, quantity]
+    );
+    
+    if (result.rowCount && result.rowCount > 0) {
       res.json({ success: true, quantity });
     } else {
       res.status(404).json({ success: false, message: 'Card not found' });
     }
   } catch (error) {
+    console.error('Set collection qty error:', error);
     res.status(500).json({ error: String(error) });
   }
 });
 
-// ============ Database Sync API ============
+// ============ Database Status API ============
 
-// Upload database (for syncing local DB to Railway)
-// Usage: curl -X POST -H "Content-Type: application/octet-stream" --data-binary @tcg_sales.db https://your-app.railway.app/api/db/upload?key=YOUR_SECRET
-app.post('/api/db/upload', (req, res) => {
-  const uploadKey = process.env.DB_UPLOAD_KEY || 'dev-upload-key';
-  const providedKey = req.query.key as string;
-  
-  if (providedKey !== uploadKey) {
-    return res.status(403).json({ error: 'Invalid upload key' });
-  }
-  
-  const chunks: Buffer[] = [];
-  req.on('data', (chunk: Buffer) => chunks.push(chunk));
-  req.on('end', () => {
-    try {
-      const dbBuffer = Buffer.concat(chunks);
-      
-      // Close existing database connection
-      closeDb();
-      
-      // Write the new database file
-      writeFileSync(DB_PATH, dbBuffer);
-      
-      // Reinitialize with the new database
-      initializeDb();
-      
-      const cardCount = countCards();
-      const salesCount = countSales();
-      
-      res.json({ 
-        success: true, 
-        message: 'Database uploaded and reloaded successfully',
-        size: dbBuffer.length,
-        path: DB_PATH,
-        cards: cardCount,
-        sales: salesCount
-      });
-    } catch (error) {
-      res.status(500).json({ error: String(error) });
-    }
-  });
-});
-
-// Download database (for backup)
-app.get('/api/db/download', (req, res) => {
-  const uploadKey = process.env.DB_UPLOAD_KEY || 'dev-upload-key';
-  const providedKey = req.query.key as string;
-  
-  if (providedKey !== uploadKey) {
-    return res.status(403).json({ error: 'Invalid key' });
-  }
-  
+// Get database status (PostgreSQL - no more file sync needed!)
+app.get('/api/db/status', async (req, res) => {
   try {
-    const dbBuffer = readFileSync(DB_PATH);
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', 'attachment; filename=tcg_sales.db');
-    res.send(dbBuffer);
+    const cardCount = await pgCountCards();
+    const salesCount = await pgCountSales();
+    
+    res.json({
+      database: 'PostgreSQL',
+      cards: cardCount,
+      sales: salesCount,
+      message: 'All data is in PostgreSQL now - no file sync needed!',
+    });
   } catch (error) {
+    console.error('DB status error:', error);
     res.status(500).json({ error: String(error) });
   }
 });

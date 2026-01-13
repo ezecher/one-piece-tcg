@@ -841,6 +841,17 @@ program
     }
   });
 
+// ============ Database Migration ============
+
+program
+  .command('db:migrate-to-postgres')
+  .description('Migrate all data from SQLite to PostgreSQL')
+  .action(async () => {
+    console.log('\n📦 Running SQLite to PostgreSQL migration...\n');
+    console.log('Run this command instead:');
+    console.log('  npx tsx src/db/migrate-to-postgres.ts\n');
+  });
+
 // Parse and run
 program.parse();
 
