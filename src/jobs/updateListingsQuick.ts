@@ -18,6 +18,24 @@ import {
   PgCard,
 } from '../db/postgres.js';
 
+/**
+ * Get proxy configuration from environment
+ * Set these env vars:
+ *   PROXY_SERVER=http://proxy.example.com:port
+ *   PROXY_USERNAME=your_username
+ *   PROXY_PASSWORD=your_password
+ */
+function getProxyConfig(): { server: string; username?: string; password?: string } | undefined {
+  const server = process.env.PROXY_SERVER;
+  if (!server) return undefined;
+  
+  return {
+    server,
+    username: process.env.PROXY_USERNAME,
+    password: process.env.PROXY_PASSWORD,
+  };
+}
+
 export interface UpdateListingsOptions {
   productIds?: number[];     // Specific products to update
   setName?: string;          // Filter by set name
@@ -25,6 +43,7 @@ export interface UpdateListingsOptions {
   headless?: boolean;
   useApi?: boolean;          // Try API first (default: true)
   workers?: number;          // Number of parallel browser tabs (1-4)
+  useProxy?: boolean;        // Use residential proxy from environment
 }
 
 interface ListingResult {
@@ -484,12 +503,22 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
     headless = false,  // Default to visible - TCGplayer blocks headless browsers 
     useApi = true,
     workers = 1,
+    useProxy = true,  // Default to using proxy if available
   } = options;
   
   const numWorkers = Math.min(Math.max(1, workers), 4);
   
+  // Check for proxy configuration
+  const proxyConfig = useProxy ? getProxyConfig() : undefined;
+  
   console.log('\n=== Quick Listings Update ===');
   console.log(`Mode: ${useApi ? 'API (fast)' : 'UI scraping'}`);
+  console.log(`Headless: ${headless}`);
+  if (proxyConfig) {
+    console.log(`Proxy: ${proxyConfig.server} ✓`);
+  } else if (useProxy) {
+    console.log('Proxy: Not configured (set PROXY_SERVER env var)');
+  }
   if (numWorkers > 1) console.log(`Workers: ${numWorkers} (parallel)`);
   if (setName) console.log(`Set filter: ${setName}`);
   if (limit) console.log(`Limit: ${limit} products`);
@@ -527,10 +556,26 @@ export async function updateListingsQuick(options: UpdateListingsOptions = {}): 
   
   // Launch browser
   console.log('Launching browser...');
-  const context = await chromium.launchPersistentContext(USER_DATA_DIR, {
-    headless,
-    viewport: { width: 1280, height: 800 },
-  });
+  
+  // When using proxy, use regular launch instead of persistent context
+  // This avoids JavaScript execution issues with proxies
+  let context;
+  if (proxyConfig) {
+    const browser = await chromium.launch({
+      headless,
+      proxy: proxyConfig,
+    });
+    context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+      javaScriptEnabled: true,
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    });
+  } else {
+    context = await chromium.launchPersistentContext(USER_DATA_DIR, {
+      headless,
+      viewport: { width: 1280, height: 800 },
+    });
+  }
   
   try {
     const startTime = Date.now();

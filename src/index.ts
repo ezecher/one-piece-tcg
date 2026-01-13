@@ -404,12 +404,13 @@ program
 
 program
   .command('refresh-listings')
-  .description('Quick API-based listings refresh with parallel workers (for local use)')
+  .description('Quick API-based listings refresh with parallel workers')
   .option('-s, --set <name>', 'Filter by set name')
   .option('-l, --limit <number>', 'Max products to process')
   .option('-p, --product <id>', 'Specific product ID to refresh')
   .option('-w, --workers <number>', 'Parallel workers (1-4)', '3')
   .option('--headless', 'Run browser in headless mode (default: visible)')
+  .option('--no-proxy', 'Disable proxy even if configured')
   .action(async (options) => {
     try {
       await updateListingsQuick({
@@ -419,6 +420,7 @@ program
         headless: options.headless === true,
         workers: options.workers ? parseInt(options.workers, 10) : 3,
         useApi: true,
+        useProxy: options.proxy !== false,
       });
     } catch (error) {
       console.error('Failed to refresh listings:', error);
