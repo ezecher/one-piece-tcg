@@ -423,6 +423,30 @@
       border-color: var(--accent-gold);
       color: var(--accent-gold);
     }
+    
+    .watchlist-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-left: 4px;
+    }
+    
+    .watchlist-btn:hover {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+    
+    .watchlist-btn.in-watchlist {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: #ef4444;
+      color: #ef4444;
+    }
   </style>
 </head>
 <body>
@@ -497,6 +521,7 @@
     let dealsData = [];
     let setsData = [];
     let collectionData = { cards: [], count: 0, totalValue: 0 };
+    let watchlistData = [];
     
     // Sorting state
     let sortColumn = 'market_price';
@@ -542,6 +567,17 @@
 
         // Load collection
         collectionData = await fetch('/api/collection').then(r => r.json());
+
+        // Load watchlist
+        try {
+          const watchlistResponse = await fetch('/api/watchlist');
+          if (watchlistResponse.ok) {
+            watchlistData = await watchlistResponse.json();
+          }
+        } catch (e) {
+          console.log('Watchlist not available (may need login)');
+          watchlistData = [];
+        }
 
         renderContent();
       } catch (error) {
@@ -682,11 +718,15 @@
               const listingClass = isDeal ? 'positive' : '';
               const saleDate = card.last_sale_date ? new Date(card.last_sale_date).toLocaleDateString() : '—';
               const inCollection = card.in_collection ? 'in-collection' : '';
+              const inWatchlist = watchlistData.some(w => w.product_id === card.product_id) ? 'in-watchlist' : '';
               return `
               <tr class="clickable" onclick="showSales(${card.product_id}, '${escapeHtml(card.name)}')">
                 <td>
                   <button onclick="toggleCollection(${card.product_id}, event)" class="collection-btn ${inCollection}" title="${card.in_collection ? 'Remove from collection' : 'Add to collection'}">
                     ${card.in_collection ? '⭐' : '☆'}
+                  </button>
+                  <button onclick="toggleWatchlist(${card.product_id}, event)" class="watchlist-btn ${inWatchlist}" title="${inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}">
+                    👁
                   </button>
                 </td>
                 <td>
@@ -862,11 +902,15 @@
               // Find card data to get last_sale_price (deals API doesn't include it)
               const cardData = cardsData.find(c => c.product_id === deal.product_id);
               const lastSale = cardData?.last_sale_price || null;
+              const inWatchlist = watchlistData.some(w => w.product_id === deal.product_id) ? 'in-watchlist' : '';
               return `
               <tr class="clickable" onclick="showSales(${deal.product_id}, '${escapeHtml(deal.name)}')">
                 <td>
                   <button onclick="toggleCollection(${deal.product_id}, event)" class="collection-btn ${deal.in_collection ? 'in-collection' : ''}" title="${deal.in_collection ? 'Remove from collection' : 'Add to collection'}">
                     ${deal.in_collection ? '⭐' : '☆'}
+                  </button>
+                  <button onclick="toggleWatchlist(${deal.product_id}, event)" class="watchlist-btn ${inWatchlist}" title="${inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}">
+                    👁
                   </button>
                 </td>
                 <td>
@@ -1110,6 +1154,39 @@
       }
     }
     window.removeFromCollection = removeFromCollection;
+
+    // Toggle watchlist
+    async function toggleWatchlist(productId, event) {
+      event.stopPropagation();
+      const btn = event.target;
+      const isInWatchlist = btn.classList.contains('in-watchlist');
+      
+      try {
+        if (isInWatchlist) {
+          await fetch(`/api/watchlist/${productId}`, { method: 'DELETE' });
+          btn.classList.remove('in-watchlist');
+          btn.textContent = '👁';
+          btn.title = 'Add to watchlist';
+        } else {
+          await fetch(`/api/watchlist/${productId}`, { method: 'POST' });
+          btn.classList.add('in-watchlist');
+          btn.textContent = '👁️';
+          btn.title = 'Remove from watchlist';
+        }
+        
+        // Update watchlist data
+        try {
+          const watchlistResponse = await fetch('/api/watchlist');
+          if (watchlistResponse.ok) {
+            watchlistData = await watchlistResponse.json();
+          }
+        } catch (e) {
+          watchlistData = [];
+        }
+      } catch (error) {
+        console.error('Error toggling watchlist:', error);
+      }
+    }
 
     // Price chart instance
     let priceChart = null;
