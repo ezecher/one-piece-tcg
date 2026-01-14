@@ -215,6 +215,7 @@ function parseDate(text: string): Date {
 /**
  * Option 1: Scrape sales from the product page UI
  * This is more reliable but slower
+ * When logged in, can access full sales history via "Load More Sales" button
  */
 export async function scrapeProductSalesFromUI(page: Page, productUrl: string): Promise<NormalizedSale[]> {
   console.log(`Scraping sales from UI: ${productUrl}`);
@@ -225,20 +226,26 @@ export async function scrapeProductSalesFromUI(page: Page, productUrl: string): 
     // Wait for page to load
     await page.waitForTimeout(3000);
     
-    // Try to find and click the "View More Data" button to expand sales history
-    const viewMoreDataSelectors = [
-      'button:has-text("View More Data")',
-      'button:has-text("View More")',
-      '[class*="view-more"]',
+    // Try to find and click elements that open the Sales History Snapshot modal
+    // The modal contains the full sales history when logged in
+    const modalTriggerSelectors = [
+      'a:has-text("View More Data")',           // Link version
+      'button:has-text("View More Data")',      // Button version
+      '[class*="price-history"] a',             // Links in price history section
+      '[class*="sales-history"] a',             // Links in sales history section  
+      '.sales__link',                           // TCGplayer's sales link class
+      'text="View More Data"',                  // Text match
     ];
     
-    for (const selector of viewMoreDataSelectors) {
+    let modalOpened = false;
+    for (const selector of modalTriggerSelectors) {
       try {
-        const button = await page.$(selector);
-        if (button) {
-          await button.click();
-          console.log(`Clicked View More Data button`);
-          await page.waitForTimeout(2000);
+        const trigger = await page.$(selector);
+        if (trigger && await trigger.isVisible()) {
+          await trigger.click();
+          console.log(`  📊 Opened sales modal`);
+          await page.waitForTimeout(2500);
+          modalOpened = true;
           break;
         }
       } catch {
@@ -246,7 +253,34 @@ export async function scrapeProductSalesFromUI(page: Page, productUrl: string): 
       }
     }
     
-    // Try to find sales data in the page
+    // If modal opened, try clicking "Load More Sales" to get full history
+    if (modalOpened) {
+      const loadMoreSelector = 'button:has-text("Load More Sales")';
+      let loadMoreClicks = 0;
+      const maxLoadMoreClicks = 10; // Get up to 10 pages of data
+      
+      while (loadMoreClicks < maxLoadMoreClicks) {
+        try {
+          const loadMoreButton = await page.$(loadMoreSelector);
+          if (loadMoreButton && await loadMoreButton.isVisible()) {
+            await loadMoreButton.click();
+            loadMoreClicks++;
+            console.log(`  📥 Load More Sales (${loadMoreClicks}/${maxLoadMoreClicks})`);
+            await page.waitForTimeout(1000);
+          } else {
+            break;
+          }
+        } catch {
+          break;
+        }
+      }
+      
+      if (loadMoreClicks > 0) {
+        console.log(`  ✅ Loaded ${loadMoreClicks} additional pages of sales`);
+      }
+    }
+    
+    // Try to find sales data in the page or modal
     // The sales table has rows with format: Date | Condition | Qty | Price
     const sales = await page.evaluate(() => {
       const results: Array<{
@@ -256,14 +290,33 @@ export async function scrapeProductSalesFromUI(page: Page, productUrl: string): 
         quantity: string;
       }> = [];
       
+      // First, look in modal/dialog if one is open (Sales History Snapshot)
+      const modalSelectors = [
+        '[role="dialog"]',
+        '.modal',
+        '[class*="modal"]',
+        '[class*="popup"]',
+        '[class*="dialog"]',
+      ];
+      
+      let searchRoot: Element | Document = document;
+      for (const selector of modalSelectors) {
+        const modal = document.querySelector(selector);
+        if (modal) {
+          searchRoot = modal;
+          break;
+        }
+      }
+      
       // Find all tables that might contain sales data
-      const tables = document.querySelectorAll('table');
+      const tables = searchRoot.querySelectorAll('table');
       
       for (const table of tables) {
         const tableText = table.textContent || '';
         
-        // Check if this table looks like a sales table (has Date, Condition, Qty, Price headers)
-        if (tableText.includes('Date') && tableText.includes('Price') && tableText.includes('Qty')) {
+        // Check if this table looks like a sales table
+        // TCGplayer's modal has "Latest Sales" header with Date, Condition, Qty, Price columns
+        if (tableText.includes('Date') && tableText.includes('Price')) {
           // Get all rows from tbody
           const rows = table.querySelectorAll('tbody tr');
           
@@ -291,17 +344,18 @@ export async function scrapeProductSalesFromUI(page: Page, productUrl: string): 
       
       // If no sales table found, try to find any rows with date/price patterns
       if (results.length === 0) {
-        // Look for elements containing sales-like data
-        const allText = document.body.innerText;
-        const salePattern = /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(NM|LP|MP|HP|Near Mint|Lightly Played|Moderately Played|Heavily Played)[^$]*\$(\d+\.?\d*)/gi;
+        const searchText = searchRoot === document ? document.body.innerText : (searchRoot as HTMLElement).innerText;
+        // Pattern: date format followed by condition followed by quantity and price
+        // e.g., "1/14/26  Unopened  1  $500.00"
+        const salePattern = /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(Unopened|NM|LP|MP|HP|Near Mint|Lightly Played|Moderately Played|Heavily Played)[^$\d]*(\d+)[^$]*\$(\d+\.?\d*)/gi;
         let match;
         
-        while ((match = salePattern.exec(allText)) !== null) {
+        while ((match = salePattern.exec(searchText)) !== null) {
           results.push({
             date: match[1],
             condition: match[2],
-            quantity: '1',
-            price: `$${match[3]}`,
+            quantity: match[3] || '1',
+            price: `$${match[4]}`,
           });
         }
       }

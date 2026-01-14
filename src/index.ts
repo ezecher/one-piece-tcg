@@ -42,6 +42,7 @@ import { updateListingsSimple } from './jobs/updateListingsSimple.js';
 import { scrapeTopCards, scrapeOneSet } from './jobs/scrapeTopCards.js';
 import { fixCardNames } from './jobs/fixCardNames.js';
 import { verifyDeals } from './jobs/verifyDeals.js';
+import { loginAndSaveCookies, testWithSavedCookies } from './jobs/loginAndSaveCookies.js';
 import { discoverByPrice } from './jobs/discoverByPrice.js';
 import { ProductMode, ONE_PIECE_SETS, MAIN_BOOSTER_SETS } from './config.js';
 
@@ -607,6 +608,30 @@ program
       process.exit(1);
     } finally {
       closeDb();
+    }
+  });
+
+program
+  .command('tcg-login')
+  .description('Login to TCGplayer manually and save cookies for extended sales access')
+  .action(async () => {
+    try {
+      await loginAndSaveCookies();
+    } catch (error) {
+      console.error('Login failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('tcg-test-cookies')
+  .description('Test if saved TCGplayer cookies still work')
+  .action(async () => {
+    try {
+      await testWithSavedCookies();
+    } catch (error) {
+      console.error('Test failed:', error);
+      process.exit(1);
     }
   });
 

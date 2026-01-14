@@ -4,16 +4,50 @@
  * Fetches latest sales data for all tracked products
  */
 
-import { chromium, Page } from 'playwright';
+import { chromium, Page, BrowserContext } from 'playwright';
 import { REQUEST_DELAY_MS } from '../config.js';
 import { join } from 'path';
+import fs from 'fs';
 
 // Path to store browser session data (keeps you logged in)
 const USER_DATA_DIR = join(process.cwd(), '.browser-data');
 
+// Path to saved TCGplayer cookies (from tcg-login command)
+const COOKIES_FILE = join(process.cwd(), 'tcgplayer-cookies.json');
+
 // Path to your actual Chrome profile (for login persistence)
 const CHROME_USER_DATA = '/Users/evanzecher/Library/Application Support/Google/Chrome';
 const CHROME_PROFILE = 'Default';
+
+/**
+ * Load saved cookies from file or environment variable
+ * Priority: 1. Local file, 2. TCGPLAYER_COOKIES env var (base64 encoded)
+ */
+async function loadSavedCookies(context: BrowserContext): Promise<boolean> {
+  try {
+    // Try local file first
+    if (fs.existsSync(COOKIES_FILE)) {
+      const cookiesJson = fs.readFileSync(COOKIES_FILE, 'utf-8');
+      const cookies = JSON.parse(cookiesJson);
+      await context.addCookies(cookies);
+      console.log(`✅ Loaded ${cookies.length} cookies from file (logged-in session)`);
+      return true;
+    }
+    
+    // Try environment variable (base64 encoded)
+    if (process.env.TCGPLAYER_COOKIES) {
+      const cookiesJson = Buffer.from(process.env.TCGPLAYER_COOKIES, 'base64').toString('utf-8');
+      const cookies = JSON.parse(cookiesJson);
+      await context.addCookies(cookies);
+      console.log(`✅ Loaded ${cookies.length} cookies from env var (logged-in session)`);
+      return true;
+    }
+  } catch (error) {
+    console.log(`⚠️ Could not load cookies: ${error}`);
+  }
+  console.log(`ℹ️ No saved cookies found. Run "npm run dev tcg-login" to save login.`);
+  return false;
+}
 
 import { 
   initPostgres,
@@ -194,6 +228,12 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
         headless,
         viewport: { width: 1280, height: 800 },
       });
+    }
+    
+    // Load saved cookies for logged-in session (more sales data!)
+    const hasCookies = await loadSavedCookies(context);
+    if (hasCookies) {
+      console.log('📊 Using logged-in session - will have access to full sales history!');
     }
     
     // Get API request context for faster fetching
