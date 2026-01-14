@@ -52,7 +52,7 @@ async function loadSavedCookies(context: BrowserContext): Promise<boolean> {
 import { 
   initPostgres,
   pgGetAllCards, 
-  pgSaveSaleEvent, 
+  pgSaveSaleEventsBatch, 
   pgStartScrapeRun, 
   pgCompleteScrapeRun,
   pgCountSales,
@@ -112,19 +112,17 @@ async function processCardSales(
     const result = await getProductSales(page, card.product_id, card.tcg_url || '', request, salesOptions);
     
     if (result.sales.length > 0) {
-      // Save each sale to PostgreSQL
-      let insertedCount = 0;
-      for (const sale of result.sales) {
-        const saved = await pgSaveSaleEvent({
-          product_id: card.product_id,
+      // Batch insert all sales at once (much faster than individual inserts!)
+      const insertedCount = await pgSaveSaleEventsBatch(
+        card.product_id,
+        result.sales.map(sale => ({
           sold_at: sale.sold_at,
           condition: sale.condition,
-          variant: null, // NormalizedSale doesn't have variant
+          variant: null,
           quantity: sale.quantity,
           price: sale.price,
-        });
-        if (saved) insertedCount++;
-      }
+        }))
+      );
       return { salesFound: result.sales.length, salesInserted: insertedCount, error: false, rateLimited: false };
     }
     

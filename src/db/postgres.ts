@@ -559,6 +559,69 @@ export async function pgSaveSaleEvent(sale: {
   }
 }
 
+/**
+ * Batch insert multiple sales at once - much faster than individual inserts!
+ * Returns number of new sales inserted (ignores duplicates)
+ */
+export async function pgSaveSaleEventsBatch(
+  productId: number,
+  sales: Array<{
+    sold_at: Date | string;
+    condition?: string;
+    variant?: string;
+    quantity?: number;
+    price: number;
+  }>
+): Promise<number> {
+  if (sales.length === 0) return 0;
+  
+  // Get card_id once
+  const cardResult = await getPool().query<{ id: number }>(
+    'SELECT id FROM cards WHERE product_id = $1',
+    [productId]
+  );
+  
+  if (cardResult.rows.length === 0) {
+    console.warn(`Card not found for product_id ${productId}`);
+    return 0;
+  }
+  
+  const cardId = cardResult.rows[0].id;
+  
+  // Build batch insert query
+  const values: any[] = [];
+  const placeholders: string[] = [];
+  let paramIndex = 1;
+  
+  for (const sale of sales) {
+    const soldAt = typeof sale.sold_at === 'string' ? new Date(sale.sold_at) : sale.sold_at;
+    values.push(
+      cardId,
+      productId,
+      soldAt,
+      sale.condition || null,
+      sale.variant || null,
+      sale.quantity || 1,
+      sale.price
+    );
+    placeholders.push(`($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6})`);
+    paramIndex += 7;
+  }
+  
+  try {
+    const result = await getPool().query(
+      `INSERT INTO sale_events (card_id, product_id, sold_at, condition, variant, quantity, price)
+       VALUES ${placeholders.join(', ')}
+       ON CONFLICT (product_id, (sold_at::date), condition, COALESCE(variant, ''), price) DO NOTHING`,
+      values
+    );
+    return result.rowCount || 0;
+  } catch (error) {
+    console.error('Batch insert error:', error);
+    return 0;
+  }
+}
+
 export async function pgGetSalesForProduct(productId: number): Promise<PgSaleEvent[]> {
   const result = await getPool().query<PgSaleEvent>(
     'SELECT * FROM sale_events WHERE product_id = $1 ORDER BY sold_at DESC',
