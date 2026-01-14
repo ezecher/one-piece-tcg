@@ -151,7 +151,9 @@ export async function verifyDeals(options: VerifyDealsOptions = {}): Promise<voi
             notDeals++;
           }
         } else if (!actualPrice) {
-          console.log(`   ℹ️  No English NM listings found`);
+          console.log(`   ℹ️  No English NM listings found - clearing listing price`);
+          // Set lowest_listing to NULL so this card doesn't appear as a "deal"
+          await pgUpdateCardListings(deal.product_id, null, null, 0);
           noListings++;
         }
         
