@@ -475,6 +475,10 @@
         <div class="stat-label">Market Value</div>
         <div class="stat-value" id="stat-value">--</div>
       </div>
+      <div class="stat-card" style="--gradient: linear-gradient(135deg, #3742fa 0%, #00f2fe 100%);">
+        <div class="stat-label">Listing Value</div>
+        <div class="stat-value" id="stat-listing-value">--</div>
+      </div>
       <div class="stat-card purple">
         <div class="stat-label">Last Sale Value</div>
         <div class="stat-value" id="stat-sale-value">--</div>
@@ -488,6 +492,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="cards">All Cards</button>
       <button class="tab" data-tab="collection">📦 My Collection</button>
+      <button class="tab" data-tab="trends">📈 Market Trends</button>
       <button class="tab" data-tab="stats">Price Stats</button>
       <button class="tab" data-tab="deals">🔥 Deals</button>
       <button class="tab" data-tab="sets">By Set</button>
@@ -551,6 +556,10 @@
         const totalMarketValue = cardsData.reduce((sum, c) => sum + (c.market_price || 0), 0);
         document.getElementById('stat-value').textContent = formatPrice(totalMarketValue);
         
+        // Calculate listing value (sum of lowest listings)
+        const totalListingValue = cardsData.reduce((sum, c) => sum + (c.lowest_listing || 0), 0);
+        document.getElementById('stat-listing-value').textContent = formatPrice(totalListingValue);
+        
         // Calculate last sale value (more accurate real-world value)
         const totalSaleValue = cardsData.reduce((sum, c) => sum + (c.last_sale_price || c.market_price || 0), 0);
         document.getElementById('stat-sale-value').textContent = formatPrice(totalSaleValue);
@@ -579,6 +588,9 @@
           watchlistData = [];
         }
 
+        // Load trends data for charts
+        await loadTrendsData();
+
         renderContent();
       } catch (error) {
         console.error('Error loading data:', error);
@@ -598,6 +610,9 @@
           break;
         case 'collection':
           renderCollection(content);
+          break;
+        case 'trends':
+          renderTrends(content);
           break;
         case 'stats':
           renderStats(content);
@@ -932,6 +947,328 @@
       `;
     }
 
+    // Trends data and charts
+    let trendsData = { sales: [], market: [] };
+    let salesChart = null;
+    let valueChart = null;
+    let marketValueChart = null;
+    let listingValueChart = null;
+    
+    async function loadTrendsData() {
+      try {
+        const [salesRes, marketRes] = await Promise.all([
+          fetch('/api/trends/sales?days=30'),
+          fetch('/api/trends/market?days=30')
+        ]);
+        trendsData.sales = await salesRes.json();
+        trendsData.market = await marketRes.json();
+      } catch (error) {
+        console.error('Failed to load trends:', error);
+      }
+    }
+    
+    function renderTrends(container) {
+      // Calculate average price per day
+      const salesWithAvg = trendsData.sales.map(d => ({
+        ...d,
+        avg_price: d.sales_count > 0 ? d.total_value / d.sales_count : 0
+      }));
+      
+      container.innerHTML = `
+        <div style="padding: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <h2 style="color: var(--text-primary); font-size: 1.25rem;">📈 Market Trends (Last 30 Days)</h2>
+          </div>
+          
+          <!-- Market & Listing Value Charts -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+              <h3 style="color: var(--accent-gold); margin-bottom: 1rem; font-size: 1rem;">📈 Total Market Value</h3>
+              <div style="height: 250px;">
+                <canvas id="marketValueChart"></canvas>
+              </div>
+            </div>
+            
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+              <h3 style="color: var(--accent-blue); margin-bottom: 1rem; font-size: 1rem;">🏷️ Total Listing Value</h3>
+              <div style="height: 250px;">
+                <canvas id="listingValueChart"></canvas>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Sales Charts -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+              <h3 style="color: var(--accent-green); margin-bottom: 1rem; font-size: 1rem;">💰 Daily Sales Volume</h3>
+              <div style="height: 250px;">
+                <canvas id="salesChart"></canvas>
+              </div>
+            </div>
+            
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+              <h3 style="color: var(--accent-purple); margin-bottom: 1rem; font-size: 1rem;">📊 Sales Count Per Day</h3>
+              <div style="height: 250px;">
+                <canvas id="countChart"></canvas>
+              </div>
+            </div>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+              <h3 style="color: #ff6b9d; margin-bottom: 1rem; font-size: 1rem;">📈 Average Sale Price</h3>
+              <div style="height: 250px;">
+                <canvas id="avgPriceChart"></canvas>
+              </div>
+            </div>
+            
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+              <h3 style="color: var(--accent-red); margin-bottom: 1rem; font-size: 1rem;">🔥 Top Selling Cards (7 Days)</h3>
+              <div id="topSelling" style="height: 250px; overflow-y: auto;">
+                <div style="color: var(--text-secondary); text-align: center; padding: 2rem;">Loading...</div>
+              </div>
+            </div>
+          </div>
+          
+          <div style="margin-top: 1.5rem;">
+            <h3 style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 1rem;">Recent Daily Summary</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Sales Volume</th>
+                  <th>Sales Count</th>
+                  <th>Avg Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${salesWithAvg.slice(-10).reverse().map(d => `
+                  <tr>
+                    <td>${d.date}</td>
+                    <td class="price" style="color: var(--accent-green);">${formatPrice(d.total_value)}</td>
+                    <td class="sales-count">${d.sales_count.toLocaleString()}</td>
+                    <td class="price" style="color: var(--accent-purple);">${formatPrice(d.avg_price)}</td>
+                  </tr>
+                `).join('') || '<tr><td colspan="4" style="text-align:center; color: var(--text-secondary);">No data yet. Run the sales scraper to collect data.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      
+      // Render charts after DOM is updated
+      setTimeout(() => {
+        renderTrendCharts();
+        loadTopSelling();
+      }, 100);
+    }
+    
+    function renderTrendCharts() {
+      const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255,255,255,0.1)' },
+            ticks: { color: '#8888a0', maxRotation: 45 }
+          },
+          y: {
+            grid: { color: 'rgba(255,255,255,0.1)' },
+            ticks: { color: '#8888a0' }
+          }
+        }
+      };
+      
+      // Destroy existing charts
+      if (salesChart) salesChart.destroy();
+      if (valueChart) valueChart.destroy();
+      if (marketValueChart) marketValueChart.destroy();
+      if (listingValueChart) listingValueChart.destroy();
+      
+      // Market Value Chart (from market snapshots)
+      const marketCtx = document.getElementById('marketValueChart');
+      if (marketCtx && trendsData.market.length > 0) {
+        marketValueChart = new Chart(marketCtx.getContext('2d'), {
+          type: 'line',
+          data: {
+            labels: trendsData.market.map(d => d.snapshot_date.slice(5)),
+            datasets: [{
+              label: 'Market Value ($)',
+              data: trendsData.market.map(d => d.total_market_value),
+              borderColor: '#ffa502',
+              backgroundColor: 'rgba(255, 165, 2, 0.1)',
+              fill: true,
+              tension: 0.4,
+            }]
+          },
+          options: {
+            ...chartOptions,
+            scales: {
+              ...chartOptions.scales,
+              y: {
+                ...chartOptions.scales.y,
+                ticks: {
+                  ...chartOptions.scales.y.ticks,
+                  callback: v => '$' + (v/1000).toFixed(0) + 'k'
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      // Listing Value Chart (from market snapshots)
+      const listingCtx = document.getElementById('listingValueChart');
+      if (listingCtx && trendsData.market.length > 0) {
+        listingValueChart = new Chart(listingCtx.getContext('2d'), {
+          type: 'line',
+          data: {
+            labels: trendsData.market.map(d => d.snapshot_date.slice(5)),
+            datasets: [{
+              label: 'Listing Value ($)',
+              data: trendsData.market.map(d => d.total_listing_value),
+              borderColor: '#3742fa',
+              backgroundColor: 'rgba(55, 66, 250, 0.1)',
+              fill: true,
+              tension: 0.4,
+            }]
+          },
+          options: {
+            ...chartOptions,
+            scales: {
+              ...chartOptions.scales,
+              y: {
+                ...chartOptions.scales.y,
+                ticks: {
+                  ...chartOptions.scales.y.ticks,
+                  callback: v => '$' + (v/1000).toFixed(0) + 'k'
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      // Sales Value Chart
+      const salesCtx = document.getElementById('salesChart');
+      if (salesCtx && trendsData.sales.length > 0) {
+        salesChart = new Chart(salesCtx.getContext('2d'), {
+          type: 'line',
+          data: {
+            labels: trendsData.sales.map(d => d.date.slice(5)),
+            datasets: [{
+              label: 'Sales Value ($)',
+              data: trendsData.sales.map(d => d.total_value),
+              borderColor: '#2ed573',
+              backgroundColor: 'rgba(46, 213, 115, 0.1)',
+              fill: true,
+              tension: 0.4,
+            }]
+          },
+          options: {
+            ...chartOptions,
+            scales: {
+              ...chartOptions.scales,
+              y: {
+                ...chartOptions.scales.y,
+                ticks: {
+                  ...chartOptions.scales.y.ticks,
+                  callback: v => '$' + (v/1000).toFixed(0) + 'k'
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      // Sales Count Chart
+      const countCtx = document.getElementById('countChart');
+      if (countCtx && trendsData.sales.length > 0) {
+        new Chart(countCtx.getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels: trendsData.sales.map(d => d.date.slice(5)),
+            datasets: [{
+              label: 'Sales Count',
+              data: trendsData.sales.map(d => d.sales_count),
+              backgroundColor: 'rgba(255, 165, 2, 0.6)',
+              borderColor: '#ffa502',
+              borderWidth: 1,
+            }]
+          },
+          options: chartOptions
+        });
+      }
+      
+      // Average Price Chart
+      const avgCtx = document.getElementById('avgPriceChart');
+      if (avgCtx && trendsData.sales.length > 0) {
+        const avgPrices = trendsData.sales.map(d => d.sales_count > 0 ? d.total_value / d.sales_count : 0);
+        valueChart = new Chart(avgCtx.getContext('2d'), {
+          type: 'line',
+          data: {
+            labels: trendsData.sales.map(d => d.date.slice(5)),
+            datasets: [{
+              label: 'Avg Price',
+              data: avgPrices,
+              borderColor: '#a855f7',
+              backgroundColor: 'rgba(168, 85, 247, 0.1)',
+              fill: true,
+              tension: 0.4,
+            }]
+          },
+          options: {
+            ...chartOptions,
+            scales: {
+              ...chartOptions.scales,
+              y: {
+                ...chartOptions.scales.y,
+                ticks: {
+                  ...chartOptions.scales.y.ticks,
+                  callback: v => '$' + v.toFixed(0)
+                }
+              }
+            }
+          }
+        });
+      }
+    }
+    
+    async function loadTopSelling() {
+      const container = document.getElementById('topSelling');
+      if (!container) return;
+      
+      try {
+        const res = await fetch('/api/volume?limit=10');
+        const topCards = await res.json();
+        
+        if (topCards.length === 0) {
+          container.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 2rem;">No sales data yet</div>';
+          return;
+        }
+        
+        container.innerHTML = topCards
+          .filter(c => c.sale_count > 0)
+          .slice(0, 8)
+          .map((card, i) => `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; border-bottom: 1px solid var(--border);">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--accent-gold); font-weight: 600;">#${i + 1}</span>
+                <span style="color: var(--text-primary); font-size: 0.85rem;">${card.name.substring(0, 30)}${card.name.length > 30 ? '...' : ''}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 1rem;">
+                <span style="color: var(--accent-green); font-size: 0.8rem;">${card.sale_count} sales</span>
+              </div>
+            </div>
+          `).join('') || '<div style="color: var(--text-secondary); text-align: center; padding: 2rem;">No recent sales</div>';
+      } catch (error) {
+        container.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 2rem;">Failed to load</div>';
+      }
+    }
+    
     function renderSets(container) {
       if (setsData.length === 0) {
         container.innerHTML = '<div class="empty">No sets data.</div>';

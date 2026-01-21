@@ -21,6 +21,7 @@ import {
   pgCountCards,
   pgStartScrapeRun,
   pgCompleteScrapeRun,
+  pgSaveMarketSnapshot,
   PgCard,
 } from '../db/postgres.js';
 import { ScrapedProduct } from '../tcg/scrapeSearchPage.js';
@@ -553,6 +554,12 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
     
     const finalCount = await pgCountCards();
     console.log(`\nCards in DB: ${existingCards.length} → ${finalCount} (+${finalCount - existingCards.length})`);
+    
+    // Save market snapshot for trend tracking
+    console.log('\n📊 Saving market snapshot...');
+    const snapshot = await pgSaveMarketSnapshot();
+    console.log(`   Total Market Value: $${snapshot.total_market_value.toLocaleString()}`);
+    console.log(`   Total Listing Value: $${snapshot.total_listing_value.toLocaleString()}`);
     
     // Finish run
     await pgCompleteScrapeRun(runId, {
