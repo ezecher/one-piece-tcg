@@ -172,7 +172,26 @@ export async function initPostgres(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_suspicious_product_id ON suspicious_listing(product_id)
     `);
     
-    console.log('PostgreSQL tables initialized (including cards, sales, and suspicious_listing)');
+    // Create daily_market_snapshot table for trend tracking
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS daily_market_snapshot (
+        id SERIAL PRIMARY KEY,
+        snapshot_date DATE UNIQUE NOT NULL,
+        total_market_value DECIMAL(12, 2),
+        total_listing_value DECIMAL(12, 2),
+        total_sales_value DECIMAL(12, 2),
+        sales_count INTEGER DEFAULT 0,
+        cards_tracked INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    
+    // Create index for snapshot lookups
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_snapshot_date ON daily_market_snapshot(snapshot_date)
+    `);
+    
+    console.log('PostgreSQL tables initialized (including cards, sales, and market snapshots)');
   } finally {
     client.release();
   }
@@ -846,5 +865,163 @@ export async function pgClearSuspiciousListings(productIds: number[]): Promise<v
     `DELETE FROM suspicious_listing WHERE product_id = ANY($1)`,
     [productIds]
   );
+}
+
+// ============ Market Trend Functions ============
+
+export interface DailySalesAggregate {
+  date: string;
+  total_value: number;
+  sales_count: number;
+}
+
+export interface MarketSnapshot {
+  snapshot_date: string;
+  total_market_value: number;
+  total_listing_value: number;
+  total_sales_value: number;
+  sales_count: number;
+  cards_tracked: number;
+}
+
+/**
+ * Get daily sales totals for a date range (from sale_events)
+ */
+export async function pgGetDailySalesAggregates(days: number = 30): Promise<DailySalesAggregate[]> {
+  const result = await getPool().query<{
+    date: Date;
+    total_value: string;
+    sales_count: string;
+  }>(`
+    SELECT 
+      sold_at::date as date,
+      SUM(price * quantity) as total_value,
+      COUNT(*) as sales_count
+    FROM sale_events
+    WHERE sold_at >= NOW() - INTERVAL '${days} days'
+    GROUP BY sold_at::date
+    ORDER BY date ASC
+  `);
+  
+  return result.rows.map(row => ({
+    date: row.date.toISOString().split('T')[0],
+    total_value: parseFloat(row.total_value) || 0,
+    sales_count: parseInt(row.sales_count, 10),
+  }));
+}
+
+/**
+ * Save a daily market snapshot (run once per day, e.g., after sales scrape)
+ */
+export async function pgSaveMarketSnapshot(): Promise<MarketSnapshot> {
+  // Calculate current totals
+  const totals = await getPool().query<{
+    total_market_value: string;
+    total_listing_value: string;
+    cards_tracked: string;
+  }>(`
+    SELECT 
+      COALESCE(SUM(market_price), 0) as total_market_value,
+      COALESCE(SUM(lowest_listing), 0) as total_listing_value,
+      COUNT(*) as cards_tracked
+    FROM cards
+    WHERE market_price IS NOT NULL
+  `);
+  
+  // Get today's sales total
+  const salesToday = await getPool().query<{
+    total_value: string;
+    sales_count: string;
+  }>(`
+    SELECT 
+      COALESCE(SUM(price * quantity), 0) as total_value,
+      COUNT(*) as sales_count
+    FROM sale_events
+    WHERE sold_at::date = CURRENT_DATE
+  `);
+  
+  const snapshot = {
+    total_market_value: parseFloat(totals.rows[0].total_market_value) || 0,
+    total_listing_value: parseFloat(totals.rows[0].total_listing_value) || 0,
+    total_sales_value: parseFloat(salesToday.rows[0].total_value) || 0,
+    sales_count: parseInt(salesToday.rows[0].sales_count, 10),
+    cards_tracked: parseInt(totals.rows[0].cards_tracked, 10),
+  };
+  
+  // Upsert snapshot for today
+  await getPool().query(`
+    INSERT INTO daily_market_snapshot 
+      (snapshot_date, total_market_value, total_listing_value, total_sales_value, sales_count, cards_tracked)
+    VALUES (CURRENT_DATE, $1, $2, $3, $4, $5)
+    ON CONFLICT (snapshot_date) DO UPDATE SET
+      total_market_value = $1,
+      total_listing_value = $2,
+      total_sales_value = $3,
+      sales_count = $4,
+      cards_tracked = $5
+  `, [
+    snapshot.total_market_value,
+    snapshot.total_listing_value,
+    snapshot.total_sales_value,
+    snapshot.sales_count,
+    snapshot.cards_tracked,
+  ]);
+  
+  return {
+    snapshot_date: new Date().toISOString().split('T')[0],
+    ...snapshot,
+  };
+}
+
+/**
+ * Get market snapshots for trend charts
+ */
+export async function pgGetMarketSnapshots(days: number = 30): Promise<MarketSnapshot[]> {
+  const result = await getPool().query<{
+    snapshot_date: Date;
+    total_market_value: string;
+    total_listing_value: string;
+    total_sales_value: string;
+    sales_count: string;
+    cards_tracked: string;
+  }>(`
+    SELECT * FROM daily_market_snapshot
+    WHERE snapshot_date >= NOW() - INTERVAL '${days} days'
+    ORDER BY snapshot_date ASC
+  `);
+  
+  return result.rows.map(row => ({
+    snapshot_date: row.snapshot_date.toISOString().split('T')[0],
+    total_market_value: parseFloat(row.total_market_value) || 0,
+    total_listing_value: parseFloat(row.total_listing_value) || 0,
+    total_sales_value: parseFloat(row.total_sales_value) || 0,
+    sales_count: parseInt(row.sales_count, 10),
+    cards_tracked: parseInt(row.cards_tracked, 10),
+  }));
+}
+
+/**
+ * Backfill market snapshots from historical sales data
+ * Useful for creating trend data from existing sales history
+ */
+export async function pgBackfillSalesSnapshots(days: number = 30): Promise<number> {
+  // Get daily sales aggregates
+  const result = await getPool().query(`
+    INSERT INTO daily_market_snapshot (snapshot_date, total_sales_value, sales_count, cards_tracked)
+    SELECT 
+      sold_at::date as snapshot_date,
+      SUM(price * quantity) as total_sales_value,
+      COUNT(*) as sales_count,
+      (SELECT COUNT(*) FROM cards) as cards_tracked
+    FROM sale_events
+    WHERE sold_at >= NOW() - INTERVAL '${days} days'
+    GROUP BY sold_at::date
+    ON CONFLICT (snapshot_date) DO UPDATE SET
+      total_sales_value = EXCLUDED.total_sales_value,
+      sales_count = EXCLUDED.sales_count
+    RETURNING *
+  `);
+  
+  return result.rowCount || 0;
 }
 
