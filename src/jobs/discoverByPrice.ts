@@ -451,34 +451,28 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
     
     if (headless) {
       // For headless/Docker: use regular launch with anti-detection settings
-      const browser = await chromium.launch({ 
+      // Proxy must be passed to launch(), not newContext()
+      const launchOptions: any = { 
         headless: true,
         args: [
           '--disable-blink-features=AutomationControlled',
           '--no-sandbox',
           '--disable-setuid-sandbox',
         ],
-      });
-      
-      // Context options with anti-detection
-      const contextOptions: any = { 
-        viewport: { width: 1400, height: 900 },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        extraHTTPHeaders: {
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
       };
       
-      // Add proxy if configured
+      // Add proxy to launch options if configured
       if (proxyConfig) {
-        contextOptions.proxy = {
-          server: proxyConfig.server,
-          username: proxyConfig.username,
-          password: proxyConfig.password,
-        };
+        launchOptions.proxy = proxyConfig;
       }
       
-      context = await browser.newContext(contextOptions);
+      const browser = await chromium.launch(launchOptions);
+      
+      context = await browser.newContext({ 
+        viewport: { width: 1400, height: 900 },
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        javaScriptEnabled: true,
+      });
       page = await context.newPage();
       
       // Hide webdriver property
