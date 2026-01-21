@@ -459,6 +459,25 @@ program
     }
   });
 
+// Refresh market prices (fast page scraper)
+program
+  .command('refresh-prices')
+  .description('Quick market price refresh by scraping search pages (~2 mins)')
+  .option('-p, --pages <number>', 'Max pages to scrape (default: 60)', '60')
+  .option('--headless', 'Run browser in headless mode')
+  .action(async (options) => {
+    try {
+      const { refreshPrices } = await import('./jobs/refreshPrices.js');
+      await refreshPrices({
+        maxPages: parseInt(options.pages, 10),
+        headless: options.headless === true,
+      });
+    } catch (error) {
+      console.error('Failed to refresh prices:', error);
+      process.exit(1);
+    }
+  });
+
 // ============ Query Commands ============
 
 program

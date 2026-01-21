@@ -14,14 +14,15 @@ import {
   REQUEST_DELAY_MS,
 } from '../config.js';
 import { 
-  saveCard, 
-  startScrapeRun, 
-  updateScrapeRun, 
-  finishScrapeRun,
-  countCards,
-  initializeDb,
-  getAllCards,
-} from '../db/client.js';
+  initPostgres,
+  pgSaveCard,
+  pgUpdateCardPrice,
+  pgGetAllCards,
+  pgCountCards,
+  pgStartScrapeRun,
+  pgCompleteScrapeRun,
+  PgCard,
+} from '../db/postgres.js';
 import { ScrapedProduct } from '../tcg/scrapeSearchPage.js';
 
 // Path to store browser session data
@@ -270,11 +271,16 @@ function isOnePieceProduct(product: ScrapedProduct): boolean {
 }
 
 /**
- * Save scraped products to database
+ * Save scraped products to PostgreSQL database
+ * For existing cards: only update price (preserve existing name)
+ * For new cards: save everything
  */
-function saveProducts(products: ScrapedProduct[]): { saved: number; skipped: number; filtered: number } {
+async function saveProducts(
+  products: ScrapedProduct[], 
+  existingProductIds: Set<number>
+): Promise<{ saved: number; updated: number; filtered: number }> {
   let saved = 0;
-  let skipped = 0;
+  let updated = 0;
   let filtered = 0;
   
   for (const product of products) {
@@ -285,22 +291,31 @@ function saveProducts(products: ScrapedProduct[]): { saved: number; skipped: num
     }
     
     try {
-      saveCard({
-        product_id: product.productId,
-        name: product.name,
-        set_name: product.setName,
-        product_type: product.productType,
-        market_price: product.marketPrice,
-        tcg_url: product.tcgUrl,
-      });
-      saved++;
+      const isExisting = existingProductIds.has(product.productId);
+      
+      if (isExisting) {
+        // Existing card - ONLY update price, preserve name
+        await pgUpdateCardPrice(product.productId, product.marketPrice || undefined);
+        updated++;
+      } else {
+        // New card - save everything including name
+        await pgSaveCard({
+          product_id: product.productId,
+          name: product.name,
+          set_name: product.setName || undefined,
+          product_type: product.productType,
+          market_price: product.marketPrice || undefined,
+          tcg_url: product.tcgUrl,
+        });
+        saved++;
+      }
     } catch (error) {
-      // Already exists or other error
-      skipped++;
+      // Error saving/updating
+      console.log(`    ⚠️ Error saving ${product.productId}: ${error}`);
     }
   }
   
-  return { saved, skipped, filtered };
+  return { saved, updated, filtered };
 }
 
 /**
@@ -382,16 +397,16 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
   console.log(`Headless: ${headless}`);
   console.log('');
   
-  // Initialize database
-  initializeDb();
+  // Initialize PostgreSQL database
+  await initPostgres();
   
   // Get existing product IDs to track new discoveries
-  const existingCards = getAllCards();
+  const existingCards = await pgGetAllCards();
   const existingProductIds = new Set(existingCards.map(c => c.product_id));
   console.log(`📊 Existing cards in DB: ${existingCards.length}`);
   
   // Start scrape run
-  const runId = startScrapeRun('products', `price-discovery-${mode}`);
+  const runId = await pgStartScrapeRun('products', `price-discovery-${mode}`);
   console.log(`Started scrape run #${runId}\n`);
   
   let totalProducts = 0;
@@ -496,10 +511,10 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
       // Track new vs existing
       const newOnPage = valuableProducts.filter(p => !existingProductIds.has(p.productId));
       
-      // Save products
-      const { saved, skipped, filtered } = saveProducts(valuableProducts);
+      // Save products (only updates price for existing, full save for new)
+      const { saved, updated, filtered } = await saveProducts(valuableProducts, existingProductIds);
       totalProducts += saved;
-      newProducts += newOnPage.length;
+      newProducts += saved;  // Only count truly new cards
       
       // Add to existing set so we don't double-count
       for (const p of valuableProducts) {
@@ -507,7 +522,7 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
       }
       
       console.log(`  ✓ Found ${products.length} total, ${onePieceProducts.length} One Piece, ${valuableProducts.length} above $${minPrice}`);
-      console.log(`  ✓ Saved: ${saved}, New: ${newOnPage.length}, Skipped: ${skipped}`);
+      console.log(`  ✓ New: ${saved}, Price updated: ${updated}, Filtered: ${filtered}`);
       
       // Show some examples
       if (newOnPage.length > 0) {
@@ -518,8 +533,7 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
         });
       }
       
-      // Update run progress
-      updateScrapeRun(runId, { products_scraped: totalProducts });
+      // Update run progress (PostgreSQL doesn't have partial updates, we'll update at the end)
       
       // Be respectful with delay between pages
       await page.waitForTimeout(REQUEST_DELAY_MS);
@@ -537,11 +551,15 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
       console.log(`Stopped: Reached price threshold ($${minPrice})`);
     }
     
-    const finalCount = countCards();
+    const finalCount = await pgCountCards();
     console.log(`\nCards in DB: ${existingCards.length} → ${finalCount} (+${finalCount - existingCards.length})`);
     
     // Finish run
-    finishScrapeRun(runId, totalErrors > 0 ? 'partial' : 'success');
+    await pgCompleteScrapeRun(runId, {
+      products_scraped: totalProducts,
+      status: totalErrors > 0 ? 'partial' : 'completed',
+      errors: totalErrors,
+    });
     
     await context.close();
     console.log('\n🏁 Browser closed.\n');
@@ -549,7 +567,11 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
   } catch (error) {
     console.error('Job failed:', error);
     totalErrors++;
-    finishScrapeRun(runId, 'error', String(error));
+    await pgCompleteScrapeRun(runId, {
+      products_scraped: totalProducts,
+      status: 'error',
+      errors: totalErrors,
+    });
     throw error;
   }
 }
