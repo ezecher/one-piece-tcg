@@ -1,6 +1,16 @@
 #!/bin/bash
 set -e
 
+# Force unbuffered output
+exec 1> >(while read line; do echo "$line"; done)
+exec 2>&1
+
+echo "=== DAILY PRICES JOB STARTING ==="
+echo "Date: $(date)"
+echo "PWD: $(pwd)"
+echo "Node: $(node --version)"
+echo "==="
+
 echo "🚀 Starting PRICES update at $(date)"
 echo "   Database: PostgreSQL"
 echo "   Expected time: ~30-60 minutes"
