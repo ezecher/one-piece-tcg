@@ -1,0 +1,30 @@
+# Cron job for daily PRICES update (PostgreSQL)
+FROM mcr.microsoft.com/playwright:v1.57.0-noble
+
+WORKDIR /app
+
+# Install build tools for native modules
+RUN apt-get update && apt-get install -y build-essential python3 && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci
+
+# Copy source and build
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+# Copy the script
+COPY scripts/daily-prices.sh ./scripts/
+RUN chmod +x ./scripts/daily-prices.sh
+
+# Copy static files
+COPY src/server/public ./dist/server/public
+COPY src/db/schema.sql ./dist/db/schema.sql
+
+ENV NODE_ENV=production
+# DATABASE_URL is passed from Railway environment
+
+# Run the prices script
+CMD ["./scripts/daily-prices.sh"]
