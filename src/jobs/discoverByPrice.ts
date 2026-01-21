@@ -450,16 +450,8 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
     let page;
     
     if (headless) {
-      // For headless/Docker: use regular launch with anti-detection settings
-      // Proxy must be passed to launch(), not newContext()
-      const launchOptions: any = { 
-        headless: true,
-        args: [
-          '--disable-blink-features=AutomationControlled',
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-        ],
-      };
+      // For headless/Docker: match updateListingsQuick exactly
+      const launchOptions: any = { headless: true };
       
       // Add proxy to launch options if configured
       if (proxyConfig) {
@@ -474,11 +466,6 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
         javaScriptEnabled: true,
       });
       page = await context.newPage();
-      
-      // Hide webdriver property
-      await page.addInitScript(() => {
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-      });
     } else {
       // For visible mode: use persistent context to keep login state
       context = await chromium.launchPersistentContext(USER_DATA_DIR, {
@@ -491,9 +478,9 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
     // Navigate to first page - using exact URL format from user
     const firstUrl = buildSearchUrl(1);
     console.log(`📄 Loading: ${firstUrl}`);
-    await page.goto(firstUrl, { waitUntil: 'networkidle', timeout: 60000 });
+    await page.goto(firstUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     
-    // Extra wait for dynamic content
+    // Wait for dynamic content to load
     await page.waitForTimeout(3000);
     await waitForResults(page);
     
