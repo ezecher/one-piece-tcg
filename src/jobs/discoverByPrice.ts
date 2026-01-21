@@ -418,13 +418,24 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
   let currentPage = 0;
   
   try {
-    // Launch browser with persistent context
+    // Launch browser
     console.log('🚀 Launching browser...\n');
-    const context = await chromium.launchPersistentContext(USER_DATA_DIR, {
-      headless,
-      viewport: { width: 1400, height: 900 },
-    });
-    const page = context.pages()[0] || await context.newPage();
+    let context;
+    let page;
+    
+    if (headless) {
+      // For headless/Docker: use regular launch (no persistent storage needed)
+      const browser = await chromium.launch({ headless: true });
+      context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+      page = await context.newPage();
+    } else {
+      // For visible mode: use persistent context to keep login state
+      context = await chromium.launchPersistentContext(USER_DATA_DIR, {
+        headless: false,
+        viewport: { width: 1400, height: 900 },
+      });
+      page = context.pages()[0] || await context.newPage();
+    }
     
     // Navigate to first page - using exact URL format from user
     const firstUrl = buildSearchUrl(1);
