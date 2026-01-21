@@ -335,6 +335,7 @@ program
   .option('-p, --min-price <number>', 'Stop when prices drop below this amount', '10')
   .option('--max-pages <number>', 'Safety limit on pages to scrape', '200')
   .option('--headless', 'Run browser in headless mode')
+  .option('--no-proxy', 'Disable proxy even if configured')
   .action(async (options) => {
     try {
       await discoverByPrice({
@@ -342,6 +343,7 @@ program
         minPrice: parseFloat(options.minPrice),
         maxPages: parseInt(options.maxPages, 10),
         headless: options.headless === true,
+        useProxy: options.proxy !== false,
       });
     } catch (error) {
       console.error('Failed to discover products:', error);
