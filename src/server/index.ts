@@ -459,6 +459,59 @@ app.get('/api/sets', async (req, res) => {
   }
 });
 
+// ============ Market Trends API ============
+
+// Get daily sales aggregates for trend charts
+app.get('/api/trends/sales', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days as string) || 30;
+    const { pgGetDailySalesAggregates } = await import('../db/postgres.js');
+    const salesData = await pgGetDailySalesAggregates(days);
+    res.json(salesData);
+  } catch (error) {
+    console.error('Sales trends error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Get market snapshots for trend charts
+app.get('/api/trends/market', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days as string) || 30;
+    const { pgGetMarketSnapshots } = await import('../db/postgres.js');
+    const snapshots = await pgGetMarketSnapshots(days);
+    res.json(snapshots);
+  } catch (error) {
+    console.error('Market trends error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Save a market snapshot (call after daily scrape)
+app.post('/api/trends/snapshot', async (req, res) => {
+  try {
+    const { pgSaveMarketSnapshot } = await import('../db/postgres.js');
+    const snapshot = await pgSaveMarketSnapshot();
+    res.json({ success: true, snapshot });
+  } catch (error) {
+    console.error('Snapshot save error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Backfill sales snapshots from historical data
+app.post('/api/trends/backfill', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days as string) || 30;
+    const { pgBackfillSalesSnapshots } = await import('../db/postgres.js');
+    const count = await pgBackfillSalesSnapshots(days);
+    res.json({ success: true, daysBackfilled: count });
+  } catch (error) {
+    console.error('Backfill error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
 // ============ Collection API Routes (PostgreSQL) ============
 
 // Get collection cards (uses in_collection flag on cards table)
