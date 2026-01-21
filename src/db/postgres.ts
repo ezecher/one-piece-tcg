@@ -405,6 +405,7 @@ export interface PgCard {
   collection_qty: number;
   created_at: Date;
   updated_at: Date;
+  last_seen_at: Date | null;
   // Joined fields
   last_sale_price?: number;
   last_sale_date?: Date;
