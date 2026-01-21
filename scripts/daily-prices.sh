@@ -3,18 +3,20 @@ set -e
 
 echo "🚀 Starting PRICES update at $(date)"
 echo "   Database: PostgreSQL"
-echo "   Expected time: ~2-3 minutes"
+echo "   Expected time: ~30-60 minutes"
 
 cd /app
 
-# Run the price refresh with a 10-minute timeout
+# Run discover-by-price to update market prices
 # --headless for Docker environment
-# --pages 80 covers all products (24 per page × 80 = 1920 products, with room to grow)
-echo "💰 Refreshing market prices..."
-timeout 600 node dist/index.js refresh-prices --headless --pages 80 2>&1 || {
+# --min-price 9 stops when prices drop below $9
+# --max-pages 100 safety limit
+# This updates prices for existing cards (doesn't mess with names)
+echo "💰 Discovering and updating market prices..."
+timeout 3600 node dist/index.js discover-by-price --headless --min-price 9 --max-pages 100 2>&1 || {
     EXIT_CODE=$?
     if [ $EXIT_CODE -eq 124 ]; then
-        echo "⚠️  Job timed out after 10 minutes"
+        echo "⚠️  Job timed out after 60 minutes"
     else
         echo "⚠️  Job exited with code $EXIT_CODE"
     fi
