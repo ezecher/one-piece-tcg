@@ -10,9 +10,9 @@ cd /app
 # Run the scraper with a 60-minute timeout
 # --headless for Docker environment
 # --workers 1 for stability (avoids rate limiting)
-# --no-proxy since TCGplayer API works fine without it
+# Proxy enabled by default (PROXY_SERVER env var) - needed for Railway IP
 echo "📋 Refreshing listings..."
-timeout 3600 node dist/index.js refresh-listings --headless --workers 1 --no-proxy 2>&1 || {
+timeout 3600 node dist/index.js refresh-listings --headless --workers 1 2>&1 || {
     EXIT_CODE=$?
     if [ $EXIT_CODE -eq 124 ]; then
         echo "⚠️  Job timed out after 60 minutes"
