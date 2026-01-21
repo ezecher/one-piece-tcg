@@ -30,6 +30,9 @@ import {
   initPostgres,
   pgGetSuspiciousListings,
   pgGetSuspiciousCount,
+  pgGetStaleCards,
+  pgGetStaleCardCount,
+  pgRemoveStaleCards,
   closePool,
 } from './db/postgres.js';
 import { chromium } from 'playwright';
@@ -928,6 +931,69 @@ program
     console.log('\n📦 Running SQLite to PostgreSQL migration...\n');
     console.log('Run this command instead:');
     console.log('  npx tsx src/db/migrate-to-postgres.ts\n');
+  });
+
+// Stale cards management
+program
+  .command('stale-cards')
+  .description('Find and optionally remove cards not seen in recent discover-by-price runs')
+  .option('-d, --days <number>', 'Days since last seen to consider stale', '7')
+  .option('-p, --max-price <number>', 'Only remove cards below this market price', '10')
+  .option('--remove', 'Actually remove the stale cards (default: just list them)')
+  .action(async (options) => {
+    try {
+      await initPostgres();
+      
+      const days = parseInt(options.days, 10);
+      const maxPrice = parseFloat(options.maxPrice);
+      
+      console.log(`\n🔍 Finding cards not seen in last ${days} days...\n`);
+      
+      const staleCount = await pgGetStaleCardCount(days);
+      
+      if (staleCount === 0) {
+        console.log('✅ No stale cards found! All cards were seen in recent scrapes.\n');
+        return;
+      }
+      
+      console.log(`Found ${staleCount} stale cards\n`);
+      
+      if (options.remove) {
+        console.log(`🗑️  Removing stale cards with market price < $${maxPrice}...`);
+        console.log('   (Cards in your collection will NOT be removed)\n');
+        
+        const removed = await pgRemoveStaleCards(days, maxPrice);
+        console.log(`✅ Removed ${removed} stale cards\n`);
+      } else {
+        // Just list them
+        const staleCards = await pgGetStaleCards(days);
+        
+        console.log('Stale cards (not seen recently):');
+        console.log('─'.repeat(80));
+        
+        for (const card of staleCards.slice(0, 50)) {
+          const lastSeen = card.last_seen_at 
+            ? new Date(card.last_seen_at).toLocaleDateString()
+            : 'never';
+          const price = card.market_price ? `$${card.market_price.toFixed(2)}` : 'no price';
+          console.log(`  ${card.name}`);
+          console.log(`    Market: ${price} | Last seen: ${lastSeen}`);
+        }
+        
+        if (staleCards.length > 50) {
+          console.log(`\n  ... and ${staleCards.length - 50} more`);
+        }
+        
+        console.log('\n─'.repeat(80));
+        console.log(`\nTo remove stale cards below $${maxPrice}, run:`);
+        console.log(`  node dist/index.js stale-cards --days ${days} --max-price ${maxPrice} --remove\n`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
   });
 
 // Parse and run

@@ -29,11 +29,26 @@ import { ScrapedProduct } from '../tcg/scrapeSearchPage.js';
 // Path to store browser session data
 const USER_DATA_DIR = join(process.cwd(), '.browser-data');
 
+/**
+ * Get proxy configuration from environment
+ */
+function getProxyConfig(): { server: string; username?: string; password?: string } | undefined {
+  const server = process.env.PROXY_SERVER;
+  if (!server) return undefined;
+  
+  return {
+    server,
+    username: process.env.PROXY_USERNAME,
+    password: process.env.PROXY_PASSWORD,
+  };
+}
+
 export interface DiscoverByPriceOptions {
   mode?: 'singles' | 'sealed' | 'all';  // What to search for
   minPrice?: number;                     // Stop when prices drop below this (default: 10)
   maxPages?: number;                     // Safety limit on pages
   headless?: boolean;
+  useProxy?: boolean;                    // Use proxy if configured (default: true)
 }
 
 /**
@@ -295,8 +310,8 @@ async function saveProducts(
       const isExisting = existingProductIds.has(product.productId);
       
       if (isExisting) {
-        // Existing card - ONLY update price, preserve name
-        await pgUpdateCardPrice(product.productId, product.marketPrice || undefined);
+        // Existing card - ONLY update price, preserve name, mark as seen
+        await pgUpdateCardPrice(product.productId, product.marketPrice || undefined, undefined, true);
         updated++;
       } else {
         // New card - save everything including name
@@ -387,7 +402,11 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
     minPrice = MIN_MARKET_PRICE,
     maxPages = 200,
     headless = false,
+    useProxy = true,
   } = options;
+  
+  // Get proxy config if available and enabled
+  const proxyConfig = useProxy ? getProxyConfig() : undefined;
   
   console.log('\n╔════════════════════════════════════════════════╗');
   console.log('║      DISCOVER ALL CARDS BY PRICE               ║');
@@ -396,6 +415,13 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
   console.log(`Min price threshold: $${minPrice}`);
   console.log(`Max pages: ${maxPages}`);
   console.log(`Headless: ${headless}`);
+  if (proxyConfig) {
+    console.log(`Proxy: ${proxyConfig.server} ✓`);
+  } else if (useProxy) {
+    console.log('Proxy: Not configured (set PROXY_SERVER env var)');
+  } else {
+    console.log('Proxy: Disabled');
+  }
   console.log('');
   
   // Initialize PostgreSQL database
@@ -424,10 +450,41 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
     let page;
     
     if (headless) {
-      // For headless/Docker: use regular launch (no persistent storage needed)
-      const browser = await chromium.launch({ headless: true });
-      context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+      // For headless/Docker: use regular launch with anti-detection settings
+      const browser = await chromium.launch({ 
+        headless: true,
+        args: [
+          '--disable-blink-features=AutomationControlled',
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+        ],
+      });
+      
+      // Context options with anti-detection
+      const contextOptions: any = { 
+        viewport: { width: 1400, height: 900 },
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        extraHTTPHeaders: {
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+      };
+      
+      // Add proxy if configured
+      if (proxyConfig) {
+        contextOptions.proxy = {
+          server: proxyConfig.server,
+          username: proxyConfig.username,
+          password: proxyConfig.password,
+        };
+      }
+      
+      context = await browser.newContext(contextOptions);
       page = await context.newPage();
+      
+      // Hide webdriver property
+      await page.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      });
     } else {
       // For visible mode: use persistent context to keep login state
       context = await chromium.launchPersistentContext(USER_DATA_DIR, {
@@ -440,7 +497,10 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
     // Navigate to first page - using exact URL format from user
     const firstUrl = buildSearchUrl(1);
     console.log(`📄 Loading: ${firstUrl}`);
-    await page.goto(firstUrl, { waitUntil: 'domcontentloaded' });
+    await page.goto(firstUrl, { waitUntil: 'networkidle', timeout: 60000 });
+    
+    // Extra wait for dynamic content
+    await page.waitForTimeout(3000);
     await waitForResults(page);
     
     // Sort by price high to low (this is crucial!)

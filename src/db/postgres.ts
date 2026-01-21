@@ -98,8 +98,14 @@ export async function initPostgres(): Promise<void> {
         in_collection BOOLEAN DEFAULT false,
         collection_qty INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
+        updated_at TIMESTAMP DEFAULT NOW(),
+        last_seen_at TIMESTAMP
       )
+    `);
+    
+    // Add last_seen_at column if it doesn't exist (for existing databases)
+    await client.query(`
+      ALTER TABLE cards ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP
     `);
     
     // Create index for card lookups
@@ -417,8 +423,8 @@ export async function pgSaveCard(card: {
   lowest_listing?: number;
 }): Promise<PgCard> {
   const result = await getPool().query<PgCard>(
-    `INSERT INTO cards (product_id, name, tcg_url, set_name, rarity, number, product_type, market_price, lowest_listing, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+    `INSERT INTO cards (product_id, name, tcg_url, set_name, rarity, number, product_type, market_price, lowest_listing, updated_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
      ON CONFLICT (product_id) 
      DO UPDATE SET 
        name = COALESCE(NULLIF($2, ''), cards.name),
@@ -429,7 +435,8 @@ export async function pgSaveCard(card: {
        product_type = COALESCE($7, cards.product_type),
        market_price = COALESCE($8, cards.market_price),
        lowest_listing = COALESCE($9, cards.lowest_listing),
-       updated_at = NOW()
+       updated_at = NOW(),
+       last_seen_at = NOW()
      RETURNING *`,
     [
       card.product_id,
@@ -489,15 +496,27 @@ export async function pgCountCards(): Promise<number> {
   return parseInt(result.rows[0].count, 10);
 }
 
-export async function pgUpdateCardPrice(productId: number, marketPrice?: number, lowestListing?: number): Promise<void> {
-  await getPool().query(
-    `UPDATE cards SET 
-      market_price = COALESCE($2, market_price),
-      lowest_listing = COALESCE($3, lowest_listing),
-      updated_at = NOW()
-     WHERE product_id = $1`,
-    [productId, marketPrice || null, lowestListing || null]
-  );
+export async function pgUpdateCardPrice(productId: number, marketPrice?: number, lowestListing?: number, updateLastSeen: boolean = false): Promise<void> {
+  if (updateLastSeen) {
+    await getPool().query(
+      `UPDATE cards SET 
+        market_price = COALESCE($2, market_price),
+        lowest_listing = COALESCE($3, lowest_listing),
+        updated_at = NOW(),
+        last_seen_at = NOW()
+       WHERE product_id = $1`,
+      [productId, marketPrice || null, lowestListing || null]
+    );
+  } else {
+    await getPool().query(
+      `UPDATE cards SET 
+        market_price = COALESCE($2, market_price),
+        lowest_listing = COALESCE($3, lowest_listing),
+        updated_at = NOW()
+       WHERE product_id = $1`,
+      [productId, marketPrice || null, lowestListing || null]
+    );
+  }
 }
 
 export async function pgUpdateCardListings(
@@ -507,13 +526,19 @@ export async function pgUpdateCardListings(
   listingCount?: number,
   currentQuantity?: number
 ): Promise<void> {
-  await getPool().query(
-    `UPDATE cards SET 
-      lowest_listing = COALESCE($2, lowest_listing),
-      updated_at = NOW()
-     WHERE product_id = $1`,
-    [productId, lowestListing]
-  );
+  // If lowestListing is explicitly null, set it to NULL (to clear bad listings)
+  // If lowestListing is undefined, keep the existing value
+  if (lowestListing === null) {
+    await getPool().query(
+      `UPDATE cards SET lowest_listing = NULL, updated_at = NOW() WHERE product_id = $1`,
+      [productId]
+    );
+  } else if (lowestListing !== undefined) {
+    await getPool().query(
+      `UPDATE cards SET lowest_listing = $2, updated_at = NOW() WHERE product_id = $1`,
+      [productId, lowestListing]
+    );
+  }
   // Note: lowestWithShipping, listingCount, currentQuantity not stored in PostgreSQL schema yet
   // Add columns if needed: ALTER TABLE cards ADD COLUMN lowest_with_shipping DECIMAL(10, 2);
 }
@@ -1023,5 +1048,60 @@ export async function pgBackfillSalesSnapshots(days: number = 30): Promise<numbe
   `);
   
   return result.rowCount || 0;
+}
+
+// ============ Stale Card Management ============
+
+/**
+ * Get cards that weren't seen in the last discover-by-price run
+ * These are cards that may have dropped below the price threshold
+ */
+export async function pgGetStaleCards(daysSinceLastSeen: number = 7): Promise<PgCard[]> {
+  const result = await getPool().query<PgCard>(`
+    SELECT * FROM cards 
+    WHERE last_seen_at IS NULL 
+       OR last_seen_at < NOW() - INTERVAL '${daysSinceLastSeen} days'
+    ORDER BY market_price DESC NULLS LAST
+  `);
+  return result.rows;
+}
+
+/**
+ * Get count of stale cards
+ */
+export async function pgGetStaleCardCount(daysSinceLastSeen: number = 7): Promise<number> {
+  const result = await getPool().query<{ count: string }>(`
+    SELECT COUNT(*) as count FROM cards 
+    WHERE last_seen_at IS NULL 
+       OR last_seen_at < NOW() - INTERVAL '${daysSinceLastSeen} days'
+  `);
+  return parseInt(result.rows[0].count, 10);
+}
+
+/**
+ * Remove cards that haven't been seen recently and are below a price threshold
+ */
+export async function pgRemoveStaleCards(
+  daysSinceLastSeen: number = 7, 
+  maxMarketPrice: number = 10
+): Promise<number> {
+  const result = await getPool().query(`
+    DELETE FROM cards 
+    WHERE (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '${daysSinceLastSeen} days')
+      AND (market_price IS NULL OR market_price < $1)
+      AND in_collection = false
+    RETURNING product_id
+  `, [maxMarketPrice]);
+  return result.rowCount || 0;
+}
+
+/**
+ * Mark a card's last_seen_at timestamp
+ */
+export async function pgMarkCardSeen(productId: number): Promise<void> {
+  await getPool().query(
+    `UPDATE cards SET last_seen_at = NOW() WHERE product_id = $1`,
+    [productId]
+  );
 }
 
