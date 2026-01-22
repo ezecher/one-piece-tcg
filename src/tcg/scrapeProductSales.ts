@@ -478,10 +478,9 @@ export async function fetchProductSalesFromAPI(
 
 /**
  * Main function to get sales for a product
- * Tries API first, falls back to UI scraping
+ * ONLY uses API - reliable and fast with retry logic
  */
 export interface GetProductSalesOptions {
-  skipUiFallback?: boolean;  // If true, don't fall back to slow UI scraping on API failure
   rateLimiter?: AdaptiveRateLimiter;  // Adaptive rate limiter for handling 403s
 }
 
@@ -497,30 +496,23 @@ export async function getProductSales(
   request?: APIRequestContext,
   options?: GetProductSalesOptions
 ): Promise<GetProductSalesResult> {
-  const { skipUiFallback = false, rateLimiter } = options || {};
+  const { rateLimiter } = options || {};
   
-  // Try API first if we have a request context
+  // ONLY use API - no UI fallback
+  // UI scraping is unreliable and slow
   if (request) {
     try {
       const result = await fetchProductSalesFromAPI(productId, request, rateLimiter);
-      if (result.sales.length > 0) {
-        return { sales: result.sales, rateLimited: false };
-      }
-      // API returned empty - might be rate limited
-      if (result.rateLimited || skipUiFallback) {
-        return { sales: [], rateLimited: result.rateLimited };
-      }
-    } catch {
-      if (skipUiFallback) {
-        return { sales: [], rateLimited: false };
-      }
-      console.log('API fetch failed, falling back to UI scraping...');
+      return result;
+    } catch (error) {
+      console.log(`API fetch failed for product ${productId}:`, error);
+      return { sales: [], rateLimited: false };
     }
   }
   
-  // Fall back to UI scraping (slow)
-  const sales = await scrapeProductSalesFromUI(page, productUrl);
-  return { sales, rateLimited: false };
+  // No request context available - can't fetch
+  console.warn('No request context available for API call');
+  return { sales: [], rateLimited: false };
 }
 
 /**

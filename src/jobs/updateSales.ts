@@ -247,9 +247,8 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
       startDelay: fastMode ? 800 : delayMs,
     });
     
-    // In fast mode, skip slow UI fallback when API fails (just skip those cards)
+    // API mode with adaptive rate limiter - no UI fallback needed
     const salesOptions: GetProductSalesOptions = { 
-      skipUiFallback: fastMode,
       rateLimiter,
     };
     let skippedCount = 0;
@@ -271,10 +270,10 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
           console.log(` +${result.salesInserted} new (${result.salesFound} total)`);
           totalSalesScraped += result.salesInserted;
         } else if (result.rateLimited) {
-          console.log(' (rate limited - will retry slower)');
+          console.log(' (API rate limited - will retry with backoff)');
           skippedCount++;
-        } else if (result.salesFound === 0 && fastMode) {
-          console.log(' (no sales)');
+        } else if (result.salesFound === 0) {
+          console.log(' (no sales found via API)');
         } else {
           console.log(` ${result.salesFound} sales (0 new)`);
         }
@@ -334,9 +333,10 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
     console.log('\n=== Summary ===');
     console.log(`Products processed: ${productsProcessed}`);
     console.log(`New sales scraped: ${totalSalesScraped}`);
-    if (skippedCount > 0) console.log(`Skipped (API unavailable): ${skippedCount}`);
+    if (skippedCount > 0) console.log(`Rate limited (retried): ${skippedCount}`);
     console.log(`Errors: ${totalErrors}`);
     console.log(`Time: ${elapsed}s (${(cards.length / parseFloat(elapsed)).toFixed(1)} products/sec)`);
+    console.log(`Mode: API-only (fast and reliable)`);
     
     const finalSalesCount = await pgCountSales();
     console.log(`\nSales in DB: ${initialSalesCount} → ${finalSalesCount} (+${finalSalesCount - initialSalesCount})`);
