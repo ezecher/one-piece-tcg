@@ -8,10 +8,10 @@
 import { chromium, BrowserContext } from 'playwright';
 import { join } from 'path';
 import { 
-  initializeDb, 
-  getAllCards, 
-  getDb,
-} from '../db/client.js';
+  initPostgres,
+  pgGetAllCards,
+  getPool,
+} from '../db/postgres.js';
 import { REQUEST_DELAY_MS } from '../config.js';
 
 const USER_DATA_DIR = join(process.cwd(), '.browser-data');
@@ -44,6 +44,7 @@ const SET_NAMES = [
   'Memorial Collection',
   'Royal Blood',
   'Legacy of the Master',
+  'Azure Seven Seas',
   // Premium/Extra sets
   'Premium Booster -The Best-',
   'Premium Booster -The Best- Vol. 2',
@@ -74,6 +75,7 @@ const SET_NAMES = [
   'A Fist of Divine Speed Pre-Release Cards',
   'Royal Blood Pre-Release Cards',
   'Legacy of the Master Pre-Release Cards',
+  'Azure Seven Seas Pre-Release Cards',
   // Release event cards
   'Romance Dawn Release Event Cards',
   'Paramount War Release Event Cards',
@@ -88,6 +90,7 @@ const SET_NAMES = [
   'A Fist of Divine Speed Release Event Cards',
   'Royal Blood Release Event Cards',
   'Legacy of the Master Release Event Cards',
+  'Azure Seven Seas Release Event Cards',
 ];
 
 // Patterns that indicate name is actually a set name (not a card name)
@@ -143,14 +146,14 @@ export interface FixCardNamesOptions {
 export async function fixCardNames(options: FixCardNamesOptions = {}): Promise<void> {
   const { headless = true, limit } = options;
 
-  initializeDb();
+  await initPostgres();
   
   // Get cards with generic names (excluding sealed products which often share set name)
-  const allCards = getAllCards();
+  const allCards = await pgGetAllCards();
   let cardsToFix = allCards.filter(card => {
     // Skip sealed products - they legitimately use set names
     if (card.product_type === 'sealed') return false;
-    return needsNameFix(card.name, card.set_name);
+    return needsNameFix(card.name, card.set_name || undefined);
   });
   
   if (limit) {
@@ -199,10 +202,11 @@ export async function fixCardNames(options: FixCardNamesOptions = {}): Promise<v
             const newName = match ? match[1].trim() : fullText;
 
             if (newName && newName !== card.name && !needsNameFix(newName)) {
-              // Update the card name in the database
-              const db = getDb();
-              db.prepare("UPDATE card SET name = ?, updated_at = datetime('now') WHERE id = ?")
-                .run(newName, card.id);
+              // Update the card name in PostgreSQL
+              await getPool().query(
+                `UPDATE cards SET name = $1, updated_at = NOW() WHERE product_id = $2`,
+                [newName, card.product_id]
+              );
               
               console.log(`   ✓ Updated: "${newName}"`);
               fixed++;
