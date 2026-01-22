@@ -587,11 +587,11 @@ export async function pgSaveSaleEvent(sale: {
   const soldAt = typeof sale.sold_at === 'string' ? new Date(sale.sold_at) : sale.sold_at;
   
   try {
-    // Use date-only for deduplication - TCGplayer API has timezone bugs that shift times by ~5 hours
+    // Use full timestamp for deduplication - only exact duplicates (same time) are rejected
     const result = await getPool().query<PgSaleEvent>(
       `INSERT INTO sale_events (card_id, product_id, sold_at, condition, variant, quantity, price)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (product_id, (sold_at::date), condition, COALESCE(variant, ''), price) DO NOTHING
+       ON CONFLICT (product_id, sold_at, condition, variant, price) DO NOTHING
        RETURNING *`,
       [
         cardId,
@@ -663,7 +663,7 @@ export async function pgSaveSaleEventsBatch(
     const result = await getPool().query(
       `INSERT INTO sale_events (card_id, product_id, sold_at, condition, variant, quantity, price)
        VALUES ${placeholders.join(', ')}
-       ON CONFLICT (product_id, (sold_at::date), condition, COALESCE(variant, ''), price) DO NOTHING`,
+       ON CONFLICT (product_id, sold_at, condition, variant, price) DO NOTHING`,
       values
     );
     return result.rowCount || 0;
