@@ -56,6 +56,7 @@ import {
   pgStartScrapeRun, 
   pgCompleteScrapeRun,
   pgCountSales,
+  pgSaveMarketSnapshot,
   PgCard,
 } from '../db/postgres.js';
 import { 
@@ -339,6 +340,12 @@ export async function updateSales(options: UpdateSalesOptions = {}): Promise<voi
     
     const finalSalesCount = await pgCountSales();
     console.log(`\nSales in DB: ${initialSalesCount} → ${finalSalesCount} (+${finalSalesCount - initialSalesCount})`);
+    
+    // Save market snapshot for trend tracking (includes last sale value)
+    console.log('\n📊 Saving market snapshot...');
+    const snapshot = await pgSaveMarketSnapshot();
+    console.log(`   Total Market Value: $${snapshot.total_market_value.toLocaleString()}`);
+    console.log(`   Total Last Sale Value: $${snapshot.total_last_sale_value.toLocaleString()}`);
     
     // Finish run
     const status = totalErrors === 0 ? 'completed' : 

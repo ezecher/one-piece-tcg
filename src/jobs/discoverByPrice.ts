@@ -612,6 +612,7 @@ export async function discoverByPrice(options: DiscoverByPriceOptions = {}): Pro
     const snapshot = await pgSaveMarketSnapshot();
     console.log(`   Total Market Value: $${snapshot.total_market_value.toLocaleString()}`);
     console.log(`   Total Listing Value: $${snapshot.total_listing_value.toLocaleString()}`);
+    console.log(`   Total Last Sale Value: $${snapshot.total_last_sale_value.toLocaleString()}`);
     
     // Finish run
     await pgCompleteScrapeRun(runId, {
