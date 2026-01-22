@@ -588,10 +588,11 @@ export async function pgSaveSaleEvent(sale: {
   
   try {
     // Use full timestamp for deduplication - only exact duplicates (same time) are rejected
+    // COALESCE(variant, '') handles NULL comparison properly in unique index
     const result = await getPool().query<PgSaleEvent>(
       `INSERT INTO sale_events (card_id, product_id, sold_at, condition, variant, quantity, price)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (product_id, sold_at, condition, variant, price) DO NOTHING
+       ON CONFLICT (product_id, sold_at, condition, COALESCE(variant, ''), price) DO NOTHING
        RETURNING *`,
       [
         cardId,
@@ -660,10 +661,11 @@ export async function pgSaveSaleEventsBatch(
   }
   
   try {
+    // COALESCE(variant, '') handles NULL comparison properly in unique index
     const result = await getPool().query(
       `INSERT INTO sale_events (card_id, product_id, sold_at, condition, variant, quantity, price)
        VALUES ${placeholders.join(', ')}
-       ON CONFLICT (product_id, sold_at, condition, variant, price) DO NOTHING`,
+       ON CONFLICT (product_id, sold_at, condition, COALESCE(variant, ''), price) DO NOTHING`,
       values
     );
     return result.rowCount || 0;
