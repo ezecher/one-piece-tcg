@@ -9,7 +9,7 @@ import { REQUEST_DELAY_MS, SALES_ENDPOINT_TEMPLATE, API_HEADERS } from '../confi
 
 /**
  * Adaptive Rate Limiter
- * Slows down when hitting 403s, speeds up when requests succeed
+ * Slows down when hitting 403/429 rate limits, speeds up when requests succeed
  */
 export class AdaptiveRateLimiter {
   private currentDelay: number;
@@ -45,7 +45,7 @@ export class AdaptiveRateLimiter {
   }
   
   /**
-   * Record a rate limit (403) - slow down immediately
+   * Record a rate limit (403/429) - slow down immediately
    */
   onRateLimit(): void {
     this.consecutiveSuccesses = 0;
@@ -416,18 +416,20 @@ export async function fetchProductSalesFromAPI(
       },
     });
       
-      if (response.status() === 403) {
+      // Check for rate limiting (403 Forbidden or 429 Too Many Requests)
+      if (response.status() === 403 || response.status() === 429) {
         // Rate limited!
         if (rateLimiter) {
           rateLimiter.onRateLimit();
           
           if (attempt < maxRetries) {
             // Wait with backoff before retrying
+            console.log(`  ⏳ Rate limited (${response.status()}), retry ${attempt + 1}/${maxRetries} after ${rateLimiter.getDelay()}ms...`);
             await rateLimiter.wait();
             continue;
           }
         }
-        console.warn(`API rate limited for product ${productId} after ${maxRetries + 1} attempts`);
+        console.warn(`⚠️ API rate limited for product ${productId} (${response.status()}) after ${maxRetries + 1} attempts`);
         return { sales: [], rateLimited: true };
       }
     
@@ -481,7 +483,7 @@ export async function fetchProductSalesFromAPI(
  * ONLY uses API - reliable and fast with retry logic
  */
 export interface GetProductSalesOptions {
-  rateLimiter?: AdaptiveRateLimiter;  // Adaptive rate limiter for handling 403s
+  rateLimiter?: AdaptiveRateLimiter;  // Adaptive rate limiter for handling 403/429 rate limits
 }
 
 export interface GetProductSalesResult {
