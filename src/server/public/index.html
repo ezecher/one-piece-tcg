@@ -540,6 +540,18 @@
       if (num == null) return 'N/A';
       return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
+    
+    // Format date safely (handles various formats from PostgreSQL)
+    function formatDate(dateVal) {
+      if (!dateVal) return '—';
+      try {
+        const date = new Date(dateVal);
+        if (isNaN(date.getTime())) return '—';
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      } catch {
+        return '—';
+      }
+    }
 
     // Load all data
     async function loadData() {
@@ -731,7 +743,7 @@
               // Highlight green if listing is below last sale price (the real deal!)
               const isDeal = hasListing && hasLastSale && card.lowest_listing < card.last_sale_price * 0.95;
               const listingClass = isDeal ? 'positive' : '';
-              const saleDate = card.last_sale_date ? new Date(card.last_sale_date).toLocaleDateString() : '—';
+              const saleDate = formatDate(card.last_sale_date);
               const inCollection = card.in_collection ? 'in-collection' : '';
               const inWatchlist = watchlistData.some(w => w.product_id === card.product_id) ? 'in-watchlist' : '';
               return `
@@ -1455,7 +1467,7 @@
                 <td style="text-align: right;">
                   ${card.last_sale_price ? `
                     <span class="price" style="color: var(--accent-gold);">${formatPrice(card.last_sale_price)}</span>
-                    <span style="color: var(--text-secondary); font-size: 0.7rem; display: block;">${new Date(card.last_sale_date).toLocaleDateString()}</span>
+                    <span style="color: var(--text-secondary); font-size: 0.7rem; display: block;">${formatDate(card.last_sale_date)}</span>
                   ` : '—'}
                 </td>
                 <td class="price" style="text-align: right; font-weight: 600;">${formatPrice(total)}</td>
@@ -1590,10 +1602,14 @@
         }
 
         // Sort sales by date (oldest first for chart)
-        const sortedSales = [...sales].sort((a, b) => new Date(a.sold_at) - new Date(b.sold_at));
+        const sortedSales = [...sales].sort((a, b) => {
+          const dateA = new Date(a.sold_at);
+          const dateB = new Date(b.sold_at);
+          return (isNaN(dateA) ? 0 : dateA) - (isNaN(dateB) ? 0 : dateB);
+        });
         
         // Prepare chart data
-        const chartLabels = sortedSales.map(s => new Date(s.sold_at).toLocaleDateString());
+        const chartLabels = sortedSales.map(s => formatDate(s.sold_at));
         const chartPrices = sortedSales.map(s => s.price);
         
         // Calculate stats
@@ -1644,7 +1660,7 @@
             <tbody>
               ${sales.map(sale => `
                 <tr>
-                  <td>${new Date(sale.sold_at).toLocaleDateString()}</td>
+                  <td>${formatDate(sale.sold_at)}</td>
                   <td class="price">${formatPrice(sale.price)}</td>
                   <td>${escapeHtml(sale.condition || 'N/A')}</td>
                   <td>${sale.quantity}</td>
