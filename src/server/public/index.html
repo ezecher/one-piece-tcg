@@ -87,7 +87,13 @@
       font-size: 0.875rem;
     }
 
-    .refresh-btn {
+    .header-actions {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .refresh-btn, .auth-btn {
       background: var(--bg-card);
       border: 1px solid var(--border);
       color: var(--text-primary);
@@ -99,9 +105,223 @@
       transition: all 0.2s;
     }
 
-    .refresh-btn:hover {
+    .refresh-btn:hover, .auth-btn:hover {
       background: var(--bg-card-hover);
       border-color: var(--accent-purple);
+    }
+
+    .auth-btn {
+      background: var(--gradient-1);
+      border: none;
+    }
+
+    .user-menu {
+      position: relative;
+    }
+
+    .user-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .user-btn:hover {
+      background: var(--bg-card-hover);
+    }
+
+    .user-dropdown {
+      position: absolute;
+      top: calc(100% + 0.5rem);
+      right: 0;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem;
+      min-width: 200px;
+      display: none;
+      z-index: 1000;
+    }
+
+    .user-dropdown.show {
+      display: block;
+    }
+
+    .user-dropdown-item {
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+
+    .user-dropdown-item:hover {
+      background: var(--bg-card-hover);
+    }
+
+    .user-dropdown-item.logout {
+      color: var(--accent-red);
+    }
+
+    /* Auth Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+    }
+
+    .modal-overlay.show {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      max-width: 400px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      margin-bottom: 1.5rem;
+    }
+
+    .modal-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    .modal-subtitle {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .form-input {
+      width: 100%;
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 0.75rem;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 1rem;
+      transition: border-color 0.2s;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--accent-purple);
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .btn-primary {
+      flex: 1;
+      background: var(--gradient-1);
+      border: none;
+      color: white;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+
+    .btn-primary:hover {
+      opacity: 0.9;
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      flex: 1;
+      background: var(--bg-card-hover);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--accent-purple);
+    }
+
+    .form-toggle {
+      text-align: center;
+      margin-top: 1rem;
+      color: var(--text-secondary);
+    }
+
+    .form-toggle a {
+      color: var(--accent-purple);
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .form-toggle a:hover {
+      text-decoration: underline;
+    }
+
+    .error-message {
+      background: rgba(255, 71, 87, 0.1);
+      border: 1px solid var(--accent-red);
+      color: var(--accent-red);
+      padding: 0.75rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.875rem;
+    }
+
+    .success-message {
+      background: rgba(46, 213, 115, 0.1);
+      border: 1px solid var(--accent-green);
+      color: var(--accent-green);
+      padding: 0.75rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.875rem;
     }
 
     /* Stats Grid */
@@ -459,8 +679,56 @@
           <div class="subtitle">Track prices and find deals</div>
         </div>
       </div>
-      <button class="refresh-btn" onclick="loadData()">↻ Refresh</button>
+      <div class="header-actions">
+        <button class="refresh-btn" onclick="loadData()">↻ Refresh</button>
+        <button class="auth-btn" id="loginBtn" onclick="showAuthModal('login')" style="display: none;">Login</button>
+        <div class="user-menu" id="userMenu" style="display: none;">
+          <button class="user-btn" onclick="toggleUserDropdown()">
+            <span id="userName">User</span>
+            <span>▾</span>
+          </button>
+          <div class="user-dropdown" id="userDropdown">
+            <div class="user-dropdown-item" onclick="alert('Collection feature coming soon!')">My Collection</div>
+            <div class="user-dropdown-item" onclick="alert('Watchlist feature coming soon!')">Watchlist</div>
+            <div class="user-dropdown-item logout" onclick="logout()">Logout</div>
+          </div>
+        </div>
+      </div>
     </header>
+
+    <!-- Auth Modal -->
+    <div class="modal-overlay" id="authModal" onclick="closeAuthModal(event)">
+      <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h2 class="modal-title" id="authTitle">Login</h2>
+          <p class="modal-subtitle" id="authSubtitle">Sign in to access your collection and watchlist</p>
+        </div>
+        <div id="authError" class="error-message" style="display: none;"></div>
+        <div id="authSuccess" class="success-message" style="display: none;"></div>
+        <form id="authForm" onsubmit="handleAuth(event)">
+          <div class="form-group" id="displayNameGroup" style="display: none;">
+            <label class="form-label" for="displayName">Display Name</label>
+            <input type="text" class="form-input" id="displayName" placeholder="Your name">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="email">Email</label>
+            <input type="email" class="form-input" id="email" placeholder="you@example.com" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="password">Password</label>
+            <input type="password" class="form-input" id="password" placeholder="••••••••" required>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="authSubmitBtn">Login</button>
+            <button type="button" class="btn-secondary" onclick="closeAuthModal()">Cancel</button>
+          </div>
+          <div class="form-toggle">
+            <span id="toggleText">Don't have an account?</span>
+            <a onclick="toggleAuthMode()"><span id="toggleLink">Register</span></a>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <div class="stats-grid" id="stats-grid">
       <div class="stat-card">
@@ -535,6 +803,184 @@
     // Set filter (null = show all)
     let selectedSet = null;
 
+    // ====== AUTHENTICATION ======
+    let authMode = 'login'; // 'login' or 'register'
+    let currentUser = null;
+    let authToken = localStorage.getItem('authToken');
+
+    // Check auth status on page load
+    async function checkAuth() {
+      if (authToken) {
+        try {
+          const response = await fetch('/api/auth/me', {
+            headers: {
+              'Authorization': `Bearer ${authToken}`
+            }
+          });
+          if (response.ok) {
+            currentUser = await response.json();
+            updateAuthUI();
+          } else {
+            // Token invalid, clear it
+            localStorage.removeItem('authToken');
+            authToken = null;
+            updateAuthUI();
+          }
+        } catch (error) {
+          console.error('Auth check failed:', error);
+          updateAuthUI();
+        }
+      } else {
+        updateAuthUI();
+      }
+    }
+
+    function updateAuthUI() {
+      const loginBtn = document.getElementById('loginBtn');
+      const userMenu = document.getElementById('userMenu');
+      const userName = document.getElementById('userName');
+
+      if (currentUser) {
+        loginBtn.style.display = 'none';
+        userMenu.style.display = 'block';
+        userName.textContent = currentUser.displayName || currentUser.email.split('@')[0];
+      } else {
+        loginBtn.style.display = 'block';
+        userMenu.style.display = 'none';
+      }
+    }
+
+    function showAuthModal(mode = 'login') {
+      authMode = mode;
+      const modal = document.getElementById('authModal');
+      const title = document.getElementById('authTitle');
+      const subtitle = document.getElementById('authSubtitle');
+      const submitBtn = document.getElementById('authSubmitBtn');
+      const displayNameGroup = document.getElementById('displayNameGroup');
+      const toggleText = document.getElementById('toggleText');
+      const toggleLink = document.getElementById('toggleLink');
+      const errorDiv = document.getElementById('authError');
+      const successDiv = document.getElementById('authSuccess');
+
+      // Reset form
+      document.getElementById('authForm').reset();
+      errorDiv.style.display = 'none';
+      successDiv.style.display = 'none';
+
+      if (mode === 'login') {
+        title.textContent = 'Login';
+        subtitle.textContent = 'Sign in to access your collection and watchlist';
+        submitBtn.textContent = 'Login';
+        displayNameGroup.style.display = 'none';
+        toggleText.textContent = "Don't have an account? ";
+        toggleLink.textContent = 'Register';
+      } else {
+        title.textContent = 'Register';
+        subtitle.textContent = 'Create an account to save your collection';
+        submitBtn.textContent = 'Create Account';
+        displayNameGroup.style.display = 'block';
+        toggleText.textContent = 'Already have an account? ';
+        toggleLink.textContent = 'Login';
+      }
+
+      modal.classList.add('show');
+    }
+
+    function closeAuthModal(event) {
+      if (!event || event.target.id === 'authModal') {
+        document.getElementById('authModal').classList.remove('show');
+      }
+    }
+
+    function toggleAuthMode() {
+      showAuthModal(authMode === 'login' ? 'register' : 'login');
+    }
+
+    function toggleUserDropdown() {
+      const dropdown = document.getElementById('userDropdown');
+      dropdown.classList.toggle('show');
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      const userMenu = document.getElementById('userMenu');
+      const dropdown = document.getElementById('userDropdown');
+      if (userMenu && !userMenu.contains(e.target)) {
+        dropdown.classList.remove('show');
+      }
+    });
+
+    async function handleAuth(event) {
+      event.preventDefault();
+      
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const displayName = document.getElementById('displayName').value;
+      const errorDiv = document.getElementById('authError');
+      const successDiv = document.getElementById('authSuccess');
+      const submitBtn = document.getElementById('authSubmitBtn');
+
+      errorDiv.style.display = 'none';
+      successDiv.style.display = 'none';
+      submitBtn.disabled = true;
+
+      try {
+        const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+        const body = authMode === 'login' 
+          ? { email, password }
+          : { email, password, displayName };
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(body)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          if (authMode === 'register') {
+            successDiv.textContent = 'Account created! You can now login.';
+            successDiv.style.display = 'block';
+            // Switch to login after 2 seconds
+            setTimeout(() => {
+              showAuthModal('login');
+              document.getElementById('email').value = email;
+            }, 2000);
+          } else {
+            // Login successful
+            authToken = data.token;
+            localStorage.setItem('authToken', authToken);
+            currentUser = data.user;
+            closeAuthModal();
+            updateAuthUI();
+            loadData(); // Reload data to include user's collection/watchlist
+          }
+        } else {
+          errorDiv.textContent = data.error || 'Authentication failed';
+          errorDiv.style.display = 'block';
+        }
+      } catch (error) {
+        errorDiv.textContent = 'Network error. Please try again.';
+        errorDiv.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem('authToken');
+      authToken = null;
+      currentUser = null;
+      updateAuthUI();
+      loadData(); // Reload data without user-specific info
+      document.getElementById('userDropdown').classList.remove('show');
+    }
+
+    // ====== END AUTHENTICATION ======
+
     // Format currency
     function formatPrice(num) {
       if (num == null) return 'N/A';
@@ -586,17 +1032,31 @@
         // Load sets
         setsData = await fetch('/api/sets').then(r => r.json());
 
-        // Load collection
-        collectionData = await fetch('/api/collection').then(r => r.json());
-
-        // Load watchlist
+        // Load collection (requires auth)
+        const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+        
         try {
-          const watchlistResponse = await fetch('/api/watchlist');
-          if (watchlistResponse.ok) {
-            watchlistData = await watchlistResponse.json();
+          const collectionResponse = await fetch('/api/collection', { headers });
+          if (collectionResponse.ok) {
+            collectionData = await collectionResponse.json();
+          } else {
+            collectionData = { cards: [], count: 0, totalValue: 0 };
           }
         } catch (e) {
-          console.log('Watchlist not available (may need login)');
+          console.log('Collection not available');
+          collectionData = { cards: [], count: 0, totalValue: 0 };
+        }
+
+        // Load watchlist (requires auth)
+        try {
+          const watchlistResponse = await fetch('/api/watchlist', { headers });
+          if (watchlistResponse.ok) {
+            watchlistData = await watchlistResponse.json();
+          } else {
+            watchlistData = [];
+          }
+        } catch (e) {
+          console.log('Watchlist not available');
           watchlistData = [];
         }
 
@@ -1785,8 +2245,8 @@
       if (e.key === 'Escape') closeModal();
     });
 
-    // Load data on page load
-    loadData();
+    // Initialize on page load
+    checkAuth().then(() => loadData());
   </script>
 </body>
 </html>
