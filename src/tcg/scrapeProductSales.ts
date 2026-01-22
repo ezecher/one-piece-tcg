@@ -17,26 +17,26 @@ export class AdaptiveRateLimiter {
   private maxDelay: number;
   private consecutiveSuccesses: number = 0;
   private consecutiveFailures: number = 0;
-  private successesNeededToSpeedUp: number = 3; // Need 3 successes to speed up (was 5)
+  private successesNeededToSpeedUp: number = 10; // Need 10 successes to speed up (more stable)
   
   constructor(options: { minDelay?: number; maxDelay?: number; startDelay?: number } = {}) {
-    this.minDelay = options.minDelay ?? 650;  // 650ms = ~92 req/min, safely under TCGplayer's limit
+    this.minDelay = options.minDelay ?? 1000;  // 1000ms = 60 req/min, safer default
     this.maxDelay = options.maxDelay ?? 15000;
-    this.currentDelay = options.startDelay ?? this.minDelay;
+    this.currentDelay = options.startDelay ?? 1500; // Start at 1.5s (40 req/min) - safe starting point
   }
   
   /**
-   * Record a successful request - speed up more aggressively
+   * Record a successful request - speed up gradually
    */
   onSuccess(): void {
     this.consecutiveFailures = 0;
     this.consecutiveSuccesses++;
     
-    // After enough successes, speed up
+    // After enough successes, speed up gradually
     if (this.consecutiveSuccesses >= this.successesNeededToSpeedUp) {
       const oldDelay = this.currentDelay;
-      // Reduce delay by 40% but not below minimum (was 20%)
-      this.currentDelay = Math.max(this.minDelay, Math.floor(this.currentDelay * 0.6));
+      // Reduce delay by 15% but not below minimum (gentle speedup)
+      this.currentDelay = Math.max(this.minDelay, Math.floor(this.currentDelay * 0.85));
       if (this.currentDelay < oldDelay) {
         console.log(`  📈 Rate limit eased: ${oldDelay}ms → ${this.currentDelay}ms`);
       }
@@ -52,9 +52,9 @@ export class AdaptiveRateLimiter {
     this.consecutiveFailures++;
     
     const oldDelay = this.currentDelay;
-    // Double the delay on each failure, up to max
-    this.currentDelay = Math.min(this.maxDelay, this.currentDelay * 2);
-    console.log(`  🐢 Rate limited! Slowing down: ${oldDelay}ms → ${this.currentDelay}ms (waiting ${this.currentDelay}ms before retry...)`);
+    // Increase delay by 50% on failure (less aggressive than doubling)
+    this.currentDelay = Math.min(this.maxDelay, Math.floor(this.currentDelay * 1.5));
+    console.log(`  🐢 Rate limited! Slowing down: ${oldDelay}ms → ${this.currentDelay}ms`);
   }
   
   /**
