@@ -1035,15 +1035,19 @@
         // Load collection (requires auth)
         const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
         
-        try {
-          const collectionResponse = await fetch('/api/collection', { headers });
-          if (collectionResponse.ok) {
-            collectionData = await collectionResponse.json();
-          } else {
+        if (authToken && currentUser) {
+          try {
+            const collectionResponse = await fetch('/api/user/collection', { headers });
+            if (collectionResponse.ok) {
+              collectionData = await collectionResponse.json();
+            } else {
+              collectionData = { cards: [], count: 0, totalValue: 0 };
+            }
+          } catch (e) {
+            console.log('Collection not available');
             collectionData = { cards: [], count: 0, totalValue: 0 };
           }
-        } catch (e) {
-          console.log('Collection not available');
+        } else {
           collectionData = { cards: [], count: 0, totalValue: 0 };
         }
 
@@ -1204,13 +1208,14 @@
               const isDeal = hasListing && hasLastSale && card.lowest_listing < card.last_sale_price * 0.95;
               const listingClass = isDeal ? 'positive' : '';
               const saleDate = formatDate(card.last_sale_date);
-              const inCollection = card.in_collection ? 'in-collection' : '';
+              const isInCollection = collectionData.cards.some(c => c.product_id === card.product_id);
+              const inCollectionClass = isInCollection ? 'in-collection' : '';
               const inWatchlist = watchlistData.some(w => w.product_id === card.product_id) ? 'in-watchlist' : '';
               return `
               <tr class="clickable" onclick="showSales(${card.product_id}, '${escapeHtml(card.name)}')">
                 <td>
-                  <button onclick="toggleCollection(${card.product_id}, event)" class="collection-btn ${inCollection}" title="${card.in_collection ? 'Remove from collection' : 'Add to collection'}">
-                    ${card.in_collection ? '⭐' : '☆'}
+                  <button onclick="toggleCollection(${card.product_id}, event)" class="collection-btn ${inCollectionClass}" title="${isInCollection ? 'Remove from collection' : 'Add to collection'}">
+                    ${isInCollection ? '⭐' : '☆'}
                   </button>
                   <button onclick="toggleWatchlist(${card.product_id}, event)" class="watchlist-btn ${inWatchlist}" title="${inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}">
                     👁
@@ -1389,12 +1394,14 @@
               // Find card data to get last_sale_price (deals API doesn't include it)
               const cardData = cardsData.find(c => c.product_id === deal.product_id);
               const lastSale = cardData?.last_sale_price || null;
+              const isInCollection = collectionData.cards.some(c => c.product_id === deal.product_id);
+              const inCollectionClass = isInCollection ? 'in-collection' : '';
               const inWatchlist = watchlistData.some(w => w.product_id === deal.product_id) ? 'in-watchlist' : '';
               return `
               <tr class="clickable" onclick="showSales(${deal.product_id}, '${escapeHtml(deal.name)}')">
                 <td>
-                  <button onclick="toggleCollection(${deal.product_id}, event)" class="collection-btn ${deal.in_collection ? 'in-collection' : ''}" title="${deal.in_collection ? 'Remove from collection' : 'Add to collection'}">
-                    ${deal.in_collection ? '⭐' : '☆'}
+                  <button onclick="toggleCollection(${deal.product_id}, event)" class="collection-btn ${inCollectionClass}" title="${isInCollection ? 'Remove from collection' : 'Add to collection'}">
+                    ${isInCollection ? '⭐' : '☆'}
                   </button>
                   <button onclick="toggleWatchlist(${deal.product_id}, event)" class="watchlist-btn ${inWatchlist}" title="${inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}">
                     👁
@@ -1856,10 +1863,10 @@
       }
 
       // Calculate values with quantities
-      const totalQty = collectionData.cards.reduce((sum, c) => sum + (c.in_collection || 1), 0);
-      const marketValue = collectionData.cards.reduce((sum, c) => sum + ((c.market_price || 0) * (c.in_collection || 1)), 0);
-      const listingValue = collectionData.cards.reduce((sum, c) => sum + ((c.lowest_listing || 0) * (c.in_collection || 1)), 0);
-      const lastSaleValue = collectionData.cards.reduce((sum, c) => sum + ((c.last_sale_price || 0) * (c.in_collection || 1)), 0);
+      const totalQty = collectionData.cards.reduce((sum, c) => sum + (c.quantity || 1), 0);
+      const marketValue = collectionData.cards.reduce((sum, c) => sum + ((c.market_price || 0) * (c.quantity || 1)), 0);
+      const listingValue = collectionData.cards.reduce((sum, c) => sum + ((c.lowest_listing || 0) * (c.quantity || 1)), 0);
+      const lastSaleValue = collectionData.cards.reduce((sum, c) => sum + ((c.last_sale_price || 0) * (c.quantity || 1)), 0);
 
       container.innerHTML = `
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
@@ -1900,7 +1907,7 @@
           </thead>
           <tbody>
             ${collectionData.cards.map(card => {
-              const qty = card.in_collection || 1;
+              const qty = card.quantity || 1;
               // Use listing price for total if available, otherwise market price
               const priceForTotal = card.lowest_listing || card.market_price || 0;
               const total = priceForTotal * qty;
@@ -1941,17 +1948,34 @@
     // Toggle collection
     async function toggleCollection(productId, event) {
       event.stopPropagation();
+      
+      if (!authToken || !currentUser) {
+        showAuthModal('login');
+        return;
+      }
+
       const btn = event.target;
       const isInCollection = btn.classList.contains('in-collection');
+      const headers = {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
+      };
       
       try {
         if (isInCollection) {
-          await fetch(`/api/collection/${productId}`, { method: 'DELETE' });
+          await fetch(`/api/user/collection/${productId}`, { 
+            method: 'DELETE',
+            headers 
+          });
           btn.classList.remove('in-collection');
           btn.textContent = '☆';
           btn.title = 'Add to collection';
         } else {
-          await fetch(`/api/collection/${productId}`, { method: 'POST' });
+          await fetch(`/api/user/collection/${productId}`, { 
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ quantity: 1 })
+          });
           btn.classList.add('in-collection');
           btn.textContent = '⭐';
           btn.title = 'Remove from collection';
@@ -1964,7 +1988,10 @@
         }
         
         // Reload collection data
-        collectionData = await fetch('/api/collection').then(r => r.json());
+        const collectionResponse = await fetch('/api/user/collection', { headers });
+        if (collectionResponse.ok) {
+          collectionData = await collectionResponse.json();
+        }
         
         // Re-render if on collection tab
         if (currentTab === 'collection') {
@@ -1977,15 +2004,28 @@
 
     // Set collection quantity
     async function setQty(productId, quantity) {
+      if (!authToken || !currentUser) {
+        showAuthModal('login');
+        return;
+      }
+
+      const headers = {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
+      };
+
       try {
-        await fetch(`/api/collection/${productId}/qty`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        await fetch(`/api/user/collection/${productId}`, {
+          method: 'PUT',
+          headers,
           body: JSON.stringify({ quantity })
         });
         
         // Reload collection data and re-render
-        collectionData = await fetch('/api/collection').then(r => r.json());
+        const collectionResponse = await fetch('/api/user/collection', { headers });
+        if (collectionResponse.ok) {
+          collectionData = await collectionResponse.json();
+        }
         renderContent();
       } catch (error) {
         console.error('Error setting quantity:', error);
@@ -1995,9 +2035,26 @@
 
     // Remove from collection completely
     async function removeFromCollection(productId) {
+      if (!authToken || !currentUser) {
+        showAuthModal('login');
+        return;
+      }
+
+      const headers = {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
+      };
+
       try {
-        await fetch(`/api/collection/${productId}`, { method: 'DELETE' });
-        collectionData = await fetch('/api/collection').then(r => r.json());
+        await fetch(`/api/user/collection/${productId}`, { 
+          method: 'DELETE',
+          headers 
+        });
+        
+        const collectionResponse = await fetch('/api/user/collection', { headers });
+        if (collectionResponse.ok) {
+          collectionData = await collectionResponse.json();
+        }
         renderContent();
       } catch (error) {
         console.error('Error removing from collection:', error);
