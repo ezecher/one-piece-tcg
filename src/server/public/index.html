@@ -953,6 +953,7 @@
     let valueChart = null;
     let marketValueChart = null;
     let listingValueChart = null;
+    let lastSaleValueChart = null;
     
     async function loadTrendsData() {
       try {
@@ -980,8 +981,8 @@
             <h2 style="color: var(--text-primary); font-size: 1.25rem;">📈 Market Trends (Last 30 Days)</h2>
           </div>
           
-          <!-- Market & Listing Value Charts -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+          <!-- Market, Listing & Last Sale Value Charts -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
             <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
               <h3 style="color: var(--accent-gold); margin-bottom: 1rem; font-size: 1rem;">📈 Total Market Value</h3>
               <div style="height: 250px;">
@@ -993,6 +994,13 @@
               <h3 style="color: var(--accent-blue); margin-bottom: 1rem; font-size: 1rem;">🏷️ Total Listing Value</h3>
               <div style="height: 250px;">
                 <canvas id="listingValueChart"></canvas>
+              </div>
+            </div>
+            
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+              <h3 style="color: var(--accent-green); margin-bottom: 1rem; font-size: 1rem;">💵 Total Last Sale Value</h3>
+              <div style="height: 250px;">
+                <canvas id="lastSaleValueChart"></canvas>
               </div>
             </div>
           </div>
@@ -1087,6 +1095,7 @@
       if (valueChart) valueChart.destroy();
       if (marketValueChart) marketValueChart.destroy();
       if (listingValueChart) listingValueChart.destroy();
+      if (lastSaleValueChart) lastSaleValueChart.destroy();
       
       // Market Value Chart (from market snapshots)
       const marketCtx = document.getElementById('marketValueChart');
@@ -1132,6 +1141,38 @@
               data: trendsData.market.map(d => d.total_listing_value),
               borderColor: '#3742fa',
               backgroundColor: 'rgba(55, 66, 250, 0.1)',
+              fill: true,
+              tension: 0.4,
+            }]
+          },
+          options: {
+            ...chartOptions,
+            scales: {
+              ...chartOptions.scales,
+              y: {
+                ...chartOptions.scales.y,
+                ticks: {
+                  ...chartOptions.scales.y.ticks,
+                  callback: v => '$' + (v/1000).toFixed(0) + 'k'
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      // Last Sale Value Chart (from market snapshots)
+      const lastSaleCtx = document.getElementById('lastSaleValueChart');
+      if (lastSaleCtx && trendsData.market.length > 0) {
+        lastSaleValueChart = new Chart(lastSaleCtx.getContext('2d'), {
+          type: 'line',
+          data: {
+            labels: trendsData.market.map(d => d.snapshot_date.slice(5)),
+            datasets: [{
+              label: 'Last Sale Value ($)',
+              data: trendsData.market.map(d => d.total_last_sale_value || 0),
+              borderColor: '#2ed573',
+              backgroundColor: 'rgba(46, 213, 115, 0.1)',
               fill: true,
               tension: 0.4,
             }]

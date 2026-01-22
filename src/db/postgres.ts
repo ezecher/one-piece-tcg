@@ -186,10 +186,16 @@ export async function initPostgres(): Promise<void> {
         total_market_value DECIMAL(12, 2),
         total_listing_value DECIMAL(12, 2),
         total_sales_value DECIMAL(12, 2),
+        total_last_sale_value DECIMAL(12, 2),
         sales_count INTEGER DEFAULT 0,
         cards_tracked INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT NOW()
       )
+    `);
+    
+    // Add total_last_sale_value column if it doesn't exist
+    await client.query(`
+      ALTER TABLE daily_market_snapshot ADD COLUMN IF NOT EXISTS total_last_sale_value DECIMAL(12, 2)
     `);
     
     // Create index for snapshot lookups
@@ -906,6 +912,7 @@ export interface MarketSnapshot {
   total_market_value: number;
   total_listing_value: number;
   total_sales_value: number;
+  total_last_sale_value: number;
   sales_count: number;
   cards_tracked: number;
 }
@@ -966,10 +973,23 @@ export async function pgSaveMarketSnapshot(): Promise<MarketSnapshot> {
     WHERE sold_at::date = CURRENT_DATE
   `);
   
+  // Get total value based on last sale price for each card
+  const lastSaleValue = await getPool().query<{ total: string }>(`
+    SELECT COALESCE(SUM(last_sale.price), 0) as total
+    FROM cards c
+    LEFT JOIN LATERAL (
+      SELECT price FROM sale_events 
+      WHERE product_id = c.product_id 
+      ORDER BY sold_at DESC LIMIT 1
+    ) last_sale ON true
+    WHERE c.market_price IS NOT NULL
+  `);
+  
   const snapshot = {
     total_market_value: parseFloat(totals.rows[0].total_market_value) || 0,
     total_listing_value: parseFloat(totals.rows[0].total_listing_value) || 0,
     total_sales_value: parseFloat(salesToday.rows[0].total_value) || 0,
+    total_last_sale_value: parseFloat(lastSaleValue.rows[0].total) || 0,
     sales_count: parseInt(salesToday.rows[0].sales_count, 10),
     cards_tracked: parseInt(totals.rows[0].cards_tracked, 10),
   };
@@ -977,18 +997,20 @@ export async function pgSaveMarketSnapshot(): Promise<MarketSnapshot> {
   // Upsert snapshot for today
   await getPool().query(`
     INSERT INTO daily_market_snapshot 
-      (snapshot_date, total_market_value, total_listing_value, total_sales_value, sales_count, cards_tracked)
-    VALUES (CURRENT_DATE, $1, $2, $3, $4, $5)
+      (snapshot_date, total_market_value, total_listing_value, total_sales_value, total_last_sale_value, sales_count, cards_tracked)
+    VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6)
     ON CONFLICT (snapshot_date) DO UPDATE SET
       total_market_value = $1,
       total_listing_value = $2,
       total_sales_value = $3,
-      sales_count = $4,
-      cards_tracked = $5
+      total_last_sale_value = $4,
+      sales_count = $5,
+      cards_tracked = $6
   `, [
     snapshot.total_market_value,
     snapshot.total_listing_value,
     snapshot.total_sales_value,
+    snapshot.total_last_sale_value,
     snapshot.sales_count,
     snapshot.cards_tracked,
   ]);
@@ -1008,6 +1030,7 @@ export async function pgGetMarketSnapshots(days: number = 30): Promise<MarketSna
     total_market_value: string;
     total_listing_value: string;
     total_sales_value: string;
+    total_last_sale_value: string;
     sales_count: string;
     cards_tracked: string;
   }>(`
@@ -1021,6 +1044,7 @@ export async function pgGetMarketSnapshots(days: number = 30): Promise<MarketSna
     total_market_value: parseFloat(row.total_market_value) || 0,
     total_listing_value: parseFloat(row.total_listing_value) || 0,
     total_sales_value: parseFloat(row.total_sales_value) || 0,
+    total_last_sale_value: parseFloat(row.total_last_sale_value) || 0,
     sales_count: parseInt(row.sales_count, 10),
     cards_tracked: parseInt(row.cards_tracked, 10),
   }));
