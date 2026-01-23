@@ -432,6 +432,7 @@ program
         useApi: true,
         useProxy: options.proxy !== false,
       });
+      process.exit(0);
     } catch (error) {
       console.error('Failed to refresh listings:', error);
       process.exit(1);
