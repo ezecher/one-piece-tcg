@@ -571,6 +571,9 @@ app.get('/api/collection', async (req, res) => {
 app.post('/api/collection/:productId', async (req, res) => {
   try {
     const productId = parseInt(req.params.productId);
+    if (isNaN(productId)) {
+      return res.status(400).json({ success: false, message: 'Invalid product ID' });
+    }
     
     const result = await getPool().query(
       `UPDATE cards SET in_collection = true, collection_qty = GREATEST(collection_qty, 1) WHERE product_id = $1 RETURNING *`,
@@ -669,6 +672,7 @@ app.post('/api/collection/:productId/price', async (req, res) => {
 app.get('/api/collection/history', optionalAuth, async (req: any, res) => {
   try {
     const days = parseInt(req.query.days as string) || 30;
+    console.log('Collection history request - userId:', req.userId);
     
     // Get collection cards - check if user is logged in
     let collectionResult;
@@ -680,6 +684,7 @@ app.get('/api/collection/history', optionalAuth, async (req: any, res) => {
         JOIN cards c ON uc.product_id = c.product_id
         WHERE uc.user_id = $1
       `, [req.userId]);
+      console.log('User collection cards found:', collectionResult.rows.length);
     } else {
       // Guest: get from cards table
       collectionResult = await getPool().query(`
