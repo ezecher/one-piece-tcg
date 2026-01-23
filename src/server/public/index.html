@@ -2344,12 +2344,12 @@
         return;
       }
 
-      // Calculate values with quantities
-      const totalQty = collectionData.cards.reduce((sum, c) => sum + (c.quantity || 1), 0);
-      const marketValue = collectionData.cards.reduce((sum, c) => sum + ((c.market_price || 0) * (c.quantity || 1)), 0);
-      const listingValue = collectionData.cards.reduce((sum, c) => sum + ((c.lowest_listing || 0) * (c.quantity || 1)), 0);
-      const lastSaleValue = collectionData.cards.reduce((sum, c) => sum + ((c.last_sale_price || 0) * (c.quantity || 1)), 0);
-      const totalCost = collectionData.cards.reduce((sum, c) => sum + ((c.purchase_price || 0) * (c.quantity || 1)), 0);
+      // Calculate values with quantities (parseFloat to handle string values from DB)
+      const totalQty = collectionData.cards.reduce((sum, c) => sum + (parseInt(c.quantity) || parseInt(c.collection_qty) || 1), 0);
+      const marketValue = collectionData.cards.reduce((sum, c) => sum + ((parseFloat(c.market_price) || 0) * (parseInt(c.quantity) || parseInt(c.collection_qty) || 1)), 0);
+      const listingValue = collectionData.cards.reduce((sum, c) => sum + ((parseFloat(c.lowest_listing) || 0) * (parseInt(c.quantity) || parseInt(c.collection_qty) || 1)), 0);
+      const lastSaleValue = collectionData.cards.reduce((sum, c) => sum + ((parseFloat(c.last_sale_price) || 0) * (parseInt(c.quantity) || parseInt(c.collection_qty) || 1)), 0);
+      const totalCost = collectionData.cards.reduce((sum, c) => sum + ((parseFloat(c.purchase_price) || 0) * (parseInt(c.quantity) || parseInt(c.collection_qty) || 1)), 0);
       const profitLoss = marketValue - totalCost;
       const profitPct = totalCost > 0 ? ((profitLoss / totalCost) * 100).toFixed(1) : 0;
 
@@ -2398,10 +2398,10 @@
           </thead>
           <tbody>
             ${collectionData.cards.map(card => {
-              const qty = card.quantity || 1;
-              const priceForTotal = card.market_price || 0;
+              const qty = parseInt(card.quantity) || parseInt(card.collection_qty) || 1;
+              const priceForTotal = parseFloat(card.market_price) || 0;
               const total = priceForTotal * qty;
-              const paid = card.purchase_price || 0;
+              const paid = parseFloat(card.purchase_price) || 0;
               const paidTotal = paid * qty;
               const gainLoss = paid > 0 ? total - paidTotal : null;
               const gainLossPct = paid > 0 ? ((gainLoss / paidTotal) * 100).toFixed(1) : null;
