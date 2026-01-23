@@ -1539,6 +1539,7 @@
               backgroundColor: setColors.map(c => c + 'cc'),
               borderWidth: 0,
               borderRadius: 4,
+              fullNames: topSets.map(s => s.name),  // Store full names
             }]
           },
           options: {
@@ -1548,6 +1549,7 @@
               ...chartOptions.plugins,
               tooltip: {
                 callbacks: {
+                  title: ctx => topSets[ctx[0].dataIndex].name,  // Full name in title
                   label: ctx => formatPrice(ctx.raw)
                 }
               }
@@ -1588,6 +1590,7 @@
               ...chartOptions.plugins,
               tooltip: {
                 callbacks: {
+                  title: ctx => setsByAvg[ctx[0].dataIndex].name,  // Full name in title
                   label: ctx => formatPrice(ctx.raw) + ' avg'
                 }
               }
@@ -1628,6 +1631,7 @@
               ...chartOptions.plugins,
               tooltip: {
                 callbacks: {
+                  title: ctx => setsBySales[ctx[0].dataIndex].name,  // Full name in title
                   label: ctx => ctx.raw + ' sales'
                 }
               }
