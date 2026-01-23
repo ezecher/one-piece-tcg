@@ -2349,13 +2349,21 @@
       const marketValue = collectionData.cards.reduce((sum, c) => sum + ((c.market_price || 0) * (c.quantity || 1)), 0);
       const listingValue = collectionData.cards.reduce((sum, c) => sum + ((c.lowest_listing || 0) * (c.quantity || 1)), 0);
       const lastSaleValue = collectionData.cards.reduce((sum, c) => sum + ((c.last_sale_price || 0) * (c.quantity || 1)), 0);
+      const totalCost = collectionData.cards.reduce((sum, c) => sum + ((c.purchase_price || 0) * (c.quantity || 1)), 0);
+      const profitLoss = marketValue - totalCost;
+      const profitPct = totalCost > 0 ? ((profitLoss / totalCost) * 100).toFixed(1) : 0;
 
       container.innerHTML = `
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
           <div style="background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border); padding: 1rem; text-align: center;">
             <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.25rem;">Items</div>
             <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);">${totalQty}</div>
             <div style="color: var(--text-secondary); font-size: 0.75rem;">(${collectionData.count} unique)</div>
+          </div>
+          <div style="background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border); padding: 1rem; text-align: center;">
+            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.25rem;">Total Cost</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);">${totalCost > 0 ? formatPrice(totalCost) : '—'}</div>
+            <div style="color: var(--text-secondary); font-size: 0.75rem;">What you paid</div>
           </div>
           <div style="background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border); padding: 1rem; text-align: center;">
             <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.25rem;">Market Value</div>
@@ -2363,14 +2371,16 @@
             <div style="color: var(--text-secondary); font-size: 0.75rem;">TCGplayer estimate</div>
           </div>
           <div style="background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border); padding: 1rem; text-align: center;">
-            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.25rem;">Listing Value</div>
-            <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-green);">${formatPrice(listingValue)}</div>
-            <div style="color: var(--text-secondary); font-size: 0.75rem;">Lowest current listings</div>
+            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.25rem;">Profit / Loss</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: ${totalCost > 0 ? (profitLoss >= 0 ? 'var(--accent-green)' : '#ff6b6b') : 'var(--text-secondary)'};">
+              ${totalCost > 0 ? (profitLoss >= 0 ? '+' : '') + formatPrice(profitLoss) : '—'}
+            </div>
+            <div style="color: var(--text-secondary); font-size: 0.75rem;">${totalCost > 0 ? (profitLoss >= 0 ? '+' : '') + profitPct + '%' : 'Add purchase prices'}</div>
           </div>
           <div style="background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border); padding: 1rem; text-align: center;">
-            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.25rem;">Last Sale Value</div>
-            <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-gold);">${formatPrice(lastSaleValue)}</div>
-            <div style="color: var(--text-secondary); font-size: 0.75rem;">Recent sold prices</div>
+            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.25rem;">Listing Value</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-green);">${formatPrice(listingValue)}</div>
+            <div style="color: var(--text-secondary); font-size: 0.75rem;">Lowest listings</div>
           </div>
         </div>
         <table>
@@ -2380,19 +2390,21 @@
               <th>QTY</th>
               <th>NAME</th>
               <th>SET</th>
-              <th>TYPE</th>
+              <th style="text-align: right;">PAID</th>
               <th style="text-align: right;">MARKET</th>
-              <th style="text-align: right;">LISTING</th>
-              <th style="text-align: right;">LAST SALE</th>
+              <th style="text-align: right;">GAIN/LOSS</th>
               <th style="text-align: right;">TOTAL</th>
             </tr>
           </thead>
           <tbody>
             ${collectionData.cards.map(card => {
               const qty = card.quantity || 1;
-              // Use listing price for total if available, otherwise market price
-              const priceForTotal = card.lowest_listing || card.market_price || 0;
+              const priceForTotal = card.market_price || 0;
               const total = priceForTotal * qty;
+              const paid = card.purchase_price || 0;
+              const paidTotal = paid * qty;
+              const gainLoss = paid > 0 ? total - paidTotal : null;
+              const gainLossPct = paid > 0 ? ((gainLoss / paidTotal) * 100).toFixed(1) : null;
               return `
               <tr>
                 <td>
@@ -2410,14 +2422,27 @@
                   </div>
                 </td>
                 <td class="set-name">${escapeHtml(card.set_name || 'N/A')}</td>
-                <td><span class="badge ${card.product_type}">${card.product_type}</span></td>
-                <td class="price" style="text-align: right;">${card.market_price ? formatPrice(card.market_price) : '—'}</td>
-                <td class="price" style="text-align: right; color: var(--accent-green);">${card.lowest_listing ? formatPrice(card.lowest_listing) : '—'}</td>
                 <td style="text-align: right;">
-                  ${card.last_sale_price ? `
-                    <span class="price" style="color: var(--accent-gold);">${formatPrice(card.last_sale_price)}</span>
-                    <span style="color: var(--text-secondary); font-size: 0.7rem; display: block;">${formatDate(card.last_sale_date)}</span>
-                  ` : '—'}
+                  <input type="number" 
+                    value="${card.purchase_price || ''}" 
+                    placeholder="$0.00"
+                    step="0.01"
+                    min="0"
+                    style="width: 70px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 4px 6px; border-radius: 4px; text-align: right; font-size: 0.85rem;"
+                    onchange="window.setPurchasePrice(${card.product_id}, this.value)"
+                    onblur="window.setPurchasePrice(${card.product_id}, this.value)"
+                  />
+                </td>
+                <td class="price" style="text-align: right;">${card.market_price ? formatPrice(card.market_price) : '—'}</td>
+                <td style="text-align: right;">
+                  ${gainLoss !== null ? `
+                    <span style="color: ${gainLoss >= 0 ? 'var(--accent-green)' : '#ff6b6b'}; font-weight: 600;">
+                      ${gainLoss >= 0 ? '+' : ''}${formatPrice(gainLoss)}
+                    </span>
+                    <span style="color: var(--text-secondary); font-size: 0.7rem; display: block;">
+                      ${gainLoss >= 0 ? '+' : ''}${gainLossPct}%
+                    </span>
+                  ` : '<span style="color: var(--text-secondary);">—</span>'}
                 </td>
                 <td class="price" style="text-align: right; font-weight: 600;">${formatPrice(total)}</td>
               </tr>
@@ -2514,6 +2539,31 @@
       }
     }
     window.setQty = setQty;
+
+    // Set purchase price for a collection item
+    async function setPurchasePrice(productId, priceValue) {
+      const price = parseFloat(priceValue);
+      if (isNaN(price) && priceValue !== '') return;
+      
+      try {
+        // Update via the collection API (no auth needed for now)
+        await fetch(`/api/collection/${productId}/price`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ purchase_price: priceValue === '' ? null : price })
+        });
+        
+        // Reload collection data and re-render
+        const collectionResponse = await fetch('/api/collection');
+        if (collectionResponse.ok) {
+          collectionData = await collectionResponse.json();
+        }
+        renderContent();
+      } catch (error) {
+        console.error('Error setting purchase price:', error);
+      }
+    }
+    window.setPurchasePrice = setPurchasePrice;
 
     // Remove from collection completely
     async function removeFromCollection(productId) {

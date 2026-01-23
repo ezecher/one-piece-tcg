@@ -51,10 +51,16 @@ export async function initPostgres(): Promise<void> {
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         product_id INTEGER NOT NULL,
         quantity INTEGER DEFAULT 1,
+        purchase_price DECIMAL(10, 2),
         notes TEXT,
         added_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(user_id, product_id)
       )
+    `);
+    
+    // Add purchase_price column if it doesn't exist (for existing databases)
+    await client.query(`
+      ALTER TABLE user_collection ADD COLUMN IF NOT EXISTS purchase_price DECIMAL(10, 2)
     `);
     
     // Create index for faster lookups
@@ -106,6 +112,11 @@ export async function initPostgres(): Promise<void> {
     // Add last_seen_at column if it doesn't exist (for existing databases)
     await client.query(`
       ALTER TABLE cards ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP
+    `);
+    
+    // Add purchase_price column for collection tracking
+    await client.query(`
+      ALTER TABLE cards ADD COLUMN IF NOT EXISTS purchase_price DECIMAL(10, 2)
     `);
     
     // Create index for card lookups
@@ -260,18 +271,20 @@ export interface UserCollectionItem {
   user_id: number;
   product_id: number;
   quantity: number;
+  purchase_price: number | null;
   notes: string | null;
   added_at: Date;
 }
 
-export async function addToUserCollection(userId: number, productId: number, quantity: number = 1): Promise<UserCollectionItem> {
+export async function addToUserCollection(userId: number, productId: number, quantity: number = 1, purchasePrice?: number): Promise<UserCollectionItem> {
   const result = await getPool().query<UserCollectionItem>(
-    `INSERT INTO user_collection (user_id, product_id, quantity)
-     VALUES ($1, $2, $3)
+    `INSERT INTO user_collection (user_id, product_id, quantity, purchase_price)
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT (user_id, product_id) 
-     DO UPDATE SET quantity = user_collection.quantity + $3
+     DO UPDATE SET quantity = user_collection.quantity + $3, 
+                   purchase_price = COALESCE($4, user_collection.purchase_price)
      RETURNING *`,
-    [userId, productId, quantity]
+    [userId, productId, quantity, purchasePrice ?? null]
   );
   return result.rows[0];
 }
@@ -284,18 +297,26 @@ export async function removeFromUserCollection(userId: number, productId: number
   return (result.rowCount ?? 0) > 0;
 }
 
-export async function setUserCollectionQty(userId: number, productId: number, quantity: number): Promise<boolean> {
+export async function setUserCollectionQty(userId: number, productId: number, quantity: number, purchasePrice?: number): Promise<boolean> {
   if (quantity <= 0) {
     return removeFromUserCollection(userId, productId);
   }
   
   const result = await getPool().query(
-    `INSERT INTO user_collection (user_id, product_id, quantity)
-     VALUES ($1, $2, $3)
+    `INSERT INTO user_collection (user_id, product_id, quantity, purchase_price)
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT (user_id, product_id) 
-     DO UPDATE SET quantity = $3
+     DO UPDATE SET quantity = $3, purchase_price = COALESCE($4, user_collection.purchase_price)
      RETURNING *`,
-    [userId, productId, quantity]
+    [userId, productId, quantity, purchasePrice ?? null]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function updateUserCollectionPurchasePrice(userId: number, productId: number, purchasePrice: number | null): Promise<boolean> {
+  const result = await getPool().query(
+    `UPDATE user_collection SET purchase_price = $3 WHERE user_id = $1 AND product_id = $2`,
+    [userId, productId, purchasePrice]
   );
   return (result.rowCount ?? 0) > 0;
 }
@@ -409,6 +430,7 @@ export interface PgCard {
   lowest_listing: number | null;
   in_collection: boolean;
   collection_qty: number;
+  purchase_price: number | null;
   created_at: Date;
   updated_at: Date;
   last_seen_at: Date | null;

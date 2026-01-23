@@ -609,28 +609,57 @@ app.delete('/api/collection/:productId', async (req, res) => {
   }
 });
 
-// Set collection quantity (PostgreSQL)
+// Set collection quantity and/or purchase price (PostgreSQL)
 app.post('/api/collection/:productId/qty', async (req, res) => {
   try {
     const productId = parseInt(req.params.productId);
     const quantity = parseInt(req.body?.quantity) || 0;
+    const purchasePrice = req.body?.purchase_price !== undefined ? parseFloat(req.body.purchase_price) : null;
     
-    const result = await getPool().query(
-      `UPDATE cards 
+    let query = `UPDATE cards 
        SET collection_qty = $2, 
-           in_collection = $2 > 0
-       WHERE product_id = $1 
-       RETURNING *`,
-      [productId, quantity]
-    );
+           in_collection = $2 > 0`;
+    const params: any[] = [productId, quantity];
+    
+    // Only update purchase_price if it was explicitly provided
+    if (purchasePrice !== null && !isNaN(purchasePrice)) {
+      query += `, purchase_price = $3`;
+      params.push(purchasePrice);
+    }
+    
+    query += ` WHERE product_id = $1 RETURNING *`;
+    
+    const result = await getPool().query(query, params);
     
     if (result.rowCount && result.rowCount > 0) {
-      res.json({ success: true, quantity });
+      res.json({ success: true, quantity, purchase_price: result.rows[0].purchase_price });
     } else {
       res.status(404).json({ success: false, message: 'Card not found' });
     }
   } catch (error) {
     console.error('Set collection qty error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Update just the purchase price for a collection item
+app.post('/api/collection/:productId/price', async (req, res) => {
+  try {
+    const productId = parseInt(req.params.productId);
+    const purchasePrice = req.body?.purchase_price !== undefined ? parseFloat(req.body.purchase_price) : null;
+    
+    const result = await getPool().query(
+      `UPDATE cards SET purchase_price = $2 WHERE product_id = $1 AND in_collection = true RETURNING *`,
+      [productId, purchasePrice]
+    );
+    
+    if (result.rowCount && result.rowCount > 0) {
+      res.json({ success: true, purchase_price: result.rows[0].purchase_price });
+    } else {
+      res.status(404).json({ success: false, message: 'Card not found in collection' });
+    }
+  } catch (error) {
+    console.error('Set purchase price error:', error);
     res.status(500).json({ error: String(error) });
   }
 });
