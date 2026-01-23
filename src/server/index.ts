@@ -377,8 +377,7 @@ app.get('/api/cards', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
   try {
     // Get cards with 7-day sales statistics
-    const pool = (await import('../db/postgres.js')).getPool();
-    const result = await pool.query(`
+    const result = await getPool().query(`
       SELECT 
         c.*,
         (SELECT price FROM sale_events WHERE product_id = c.product_id ORDER BY sold_at DESC LIMIT 1) as last_sale_price,
