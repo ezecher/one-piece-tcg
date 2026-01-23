@@ -1529,34 +1529,36 @@
             
             <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
               <h3 style="color: var(--accent-red); margin-bottom: 1rem; font-size: 1rem;">🔥 Top Selling Cards (7 Days)</h3>
-              <div id="topSelling" style="height: 250px; overflow-y: auto;">
+              <div id="topSelling" style="max-height: 350px; overflow-y: auto;">
                 <div style="color: var(--text-secondary); text-align: center; padding: 2rem;">Loading...</div>
               </div>
             </div>
           </div>
           
           <div style="margin-top: 1.5rem;">
-            <h3 style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 1rem;">Recent Daily Summary</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Sales Volume</th>
-                  <th>Sales Count</th>
-                  <th>Avg Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${salesWithAvg.slice(-10).reverse().map(d => `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+              <h3 style="color: var(--text-secondary); margin: 0; font-size: 1rem;">📊 Daily Market Summary</h3>
+              <button id="toggleAllDays" onclick="toggleDailySummary()" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary); padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem;">
+                Show All Days
+              </button>
+            </div>
+            <div style="overflow-x: auto;">
+              <table id="dailySummaryTable">
+                <thead>
                   <tr>
-                    <td>${d.date}</td>
-                    <td class="price" style="color: var(--accent-green);">${formatPrice(d.total_value)}</td>
-                    <td class="sales-count">${d.sales_count.toLocaleString()}</td>
-                    <td class="price" style="color: var(--accent-purple);">${formatPrice(d.avg_price)}</td>
+                    <th>Date</th>
+                    <th style="color: var(--accent-gold);">Market Value</th>
+                    <th style="color: var(--accent-blue);">Listing Value</th>
+                    <th style="color: var(--accent-green);">Sales Volume</th>
+                    <th>Sales #</th>
+                    <th style="color: var(--accent-purple);">Avg Price</th>
+                    <th style="color: #ff6b9d;">Cards</th>
                   </tr>
-                `).join('') || '<tr><td colspan="4" style="text-align:center; color: var(--text-secondary);">No data yet. Run the sales scraper to collect data.</td></tr>'}
-              </tbody>
-            </table>
+                </thead>
+                <tbody id="dailySummaryBody">
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       `;
@@ -1565,7 +1567,81 @@
       setTimeout(() => {
         renderTrendCharts();
         loadTopSelling();
+        renderDailySummary(false);
       }, 100);
+    }
+    
+    let showAllDays = false;
+    
+    function toggleDailySummary() {
+      showAllDays = !showAllDays;
+      const btn = document.getElementById('toggleAllDays');
+      if (btn) {
+        btn.textContent = showAllDays ? 'Show Less' : 'Show All Days';
+      }
+      renderDailySummary(showAllDays);
+    }
+    
+    function renderDailySummary(showAll) {
+      const tbody = document.getElementById('dailySummaryBody');
+      if (!tbody) return;
+      
+      // Combine market snapshots with sales data
+      const marketMap = new Map();
+      trendsData.market.forEach(m => {
+        marketMap.set(m.snapshot_date, m);
+      });
+      
+      // Create combined data array
+      const combinedData = [];
+      const seenDates = new Set();
+      
+      // Add market snapshot data
+      trendsData.market.forEach(m => {
+        seenDates.add(m.snapshot_date);
+        combinedData.push({
+          date: m.snapshot_date,
+          market_value: m.total_market_value || 0,
+          listing_value: m.total_listing_value || 0,
+          sales_volume: m.total_sales_value || 0,
+          sales_count: m.sales_count || 0,
+          cards_tracked: m.cards_tracked || 0,
+          avg_price: m.sales_count > 0 ? (m.total_sales_value / m.sales_count) : 0
+        });
+      });
+      
+      // Add sales data for dates not in market snapshots
+      trendsData.sales.forEach(s => {
+        if (!seenDates.has(s.date)) {
+          combinedData.push({
+            date: s.date,
+            market_value: 0,
+            listing_value: 0,
+            sales_volume: s.total_value || 0,
+            sales_count: s.sales_count || 0,
+            cards_tracked: 0,
+            avg_price: s.sales_count > 0 ? (s.total_value / s.sales_count) : 0
+          });
+        }
+      });
+      
+      // Sort by date descending
+      combinedData.sort((a, b) => new Date(b.date) - new Date(a.date));
+      
+      // Slice based on showAll
+      const displayData = showAll ? combinedData : combinedData.slice(0, 10);
+      
+      tbody.innerHTML = displayData.map(d => `
+        <tr>
+          <td>${d.date}</td>
+          <td style="color: var(--accent-gold);">${d.market_value > 0 ? formatPrice(d.market_value) : '-'}</td>
+          <td style="color: var(--accent-blue);">${d.listing_value > 0 ? formatPrice(d.listing_value) : '-'}</td>
+          <td style="color: var(--accent-green);">${d.sales_volume > 0 ? formatPrice(d.sales_volume) : '-'}</td>
+          <td>${d.sales_count > 0 ? d.sales_count.toLocaleString() : '-'}</td>
+          <td style="color: var(--accent-purple);">${d.avg_price > 0 ? formatPrice(d.avg_price) : '-'}</td>
+          <td style="color: #ff6b9d;">${d.cards_tracked > 0 ? d.cards_tracked.toLocaleString() : '-'}</td>
+        </tr>
+      `).join('') || '<tr><td colspan="7" style="text-align:center; color: var(--text-secondary);">No data yet</td></tr>';
     }
     
     function renderTrendCharts() {
@@ -1816,7 +1892,7 @@
       if (!container) return;
       
       try {
-        const res = await fetch('/api/volume?limit=10');
+        const res = await fetch('/api/volume?limit=20');
         const topCards = await res.json();
         
         if (topCards.length === 0) {
@@ -1826,20 +1902,37 @@
         
         container.innerHTML = topCards
           .filter(c => c.sale_count > 0)
-          .slice(0, 8)
+          .slice(0, 15)
           .map((card, i) => `
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; border-bottom: 1px solid var(--border);">
+            <div 
+              style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.2s;"
+              onmouseover="this.style.background='var(--bg-hover)'"
+              onmouseout="this.style.background='transparent'"
+              onclick="openCardFromTopSelling(${card.product_id}, '${card.name.replace(/'/g, "\\'")}')"
+            >
               <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <span style="color: var(--accent-gold); font-weight: 600;">#${i + 1}</span>
-                <span style="color: var(--text-primary); font-size: 0.85rem;">${card.name.substring(0, 30)}${card.name.length > 30 ? '...' : ''}</span>
+                <span style="color: var(--accent-gold); font-weight: 600; min-width: 24px;">#${i + 1}</span>
+                <span style="color: var(--text-primary); font-size: 0.85rem;">${card.name.substring(0, 28)}${card.name.length > 28 ? '...' : ''}</span>
               </div>
-              <div style="display: flex; align-items: center; gap: 1rem;">
-                <span style="color: var(--accent-green); font-size: 0.8rem;">${card.sale_count} sales</span>
+              <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <span style="color: var(--accent-green); font-size: 0.8rem; font-weight: 500;">${card.sale_count} sales</span>
+                <span style="color: var(--text-secondary); font-size: 0.7rem;">→</span>
               </div>
             </div>
           `).join('') || '<div style="color: var(--text-secondary); text-align: center; padding: 2rem;">No recent sales</div>';
       } catch (error) {
         container.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 2rem;">Failed to load</div>';
+      }
+    }
+    
+    function openCardFromTopSelling(productId, cardName) {
+      // Find the card in our data and open its modal
+      const card = cardsData.find(c => c.product_id === productId);
+      if (card) {
+        openModal(card);
+      } else {
+        // If card not in current view, open TCGPlayer directly
+        window.open(`https://www.tcgplayer.com/product/${productId}`, '_blank');
       }
     }
     
