@@ -1513,7 +1513,7 @@
       });
       
       // Filter to major sets (20+ cards, exclude tournament/promo sets)
-      const excludeKeywords = ['Tournament', 'Anniversary', 'Championship', 'Event Pack', 'Finalist', 'Winner', 'Treasure Cup'];
+      const excludeKeywords = ['Tournament', 'Anniversary', 'Championship', 'Event Pack', 'Finalist', 'Winner', 'Treasure Cup', 'Promotion'];
       const topSets = Object.values(setStats)
         .filter(s => s.cardCount >= 20)  // Only major sets with 20+ cards
         .filter(s => !excludeKeywords.some(kw => s.name.includes(kw)))  // Exclude promo/tournament sets
