@@ -665,13 +665,96 @@ app.post('/api/collection/:productId/price', async (req, res) => {
   }
 });
 
-// Get collection history (snapshots over time)
+// Get collection history (calculated from historical sales data)
 app.get('/api/collection/history', async (req, res) => {
   try {
     const days = parseInt(req.query.days as string) || 30;
-    const { pgGetCollectionSnapshots } = await import('../db/postgres.js');
-    const snapshots = await pgGetCollectionSnapshots(days);
-    res.json(snapshots);
+    
+    // Get collection cards with their purchase prices
+    const collectionResult = await getPool().query(`
+      SELECT product_id, collection_qty, purchase_price, market_price
+      FROM cards 
+      WHERE in_collection = true
+    `);
+    
+    if (collectionResult.rows.length === 0) {
+      return res.json([]);
+    }
+    
+    const productIds = collectionResult.rows.map(c => c.product_id);
+    const collectionCards = new Map(collectionResult.rows.map(c => [
+      c.product_id, 
+      { 
+        qty: parseInt(c.collection_qty) || 1, 
+        cost: parseFloat(c.purchase_price) || 0,
+        currentPrice: parseFloat(c.market_price) || 0
+      }
+    ]));
+    
+    // Get daily average prices for collection cards from sales history
+    const priceHistoryResult = await getPool().query(`
+      SELECT 
+        sold_at::date as sale_date,
+        product_id,
+        AVG(price) as avg_price
+      FROM sale_events
+      WHERE product_id = ANY($1)
+        AND sold_at >= NOW() - INTERVAL '${days} days'
+      GROUP BY sold_at::date, product_id
+      ORDER BY sale_date ASC
+    `, [productIds]);
+    
+    // Build a map of date -> product_id -> price
+    const pricesByDate = new Map<string, Map<number, number>>();
+    for (const row of priceHistoryResult.rows) {
+      const dateStr = row.sale_date.toISOString().split('T')[0];
+      if (!pricesByDate.has(dateStr)) {
+        pricesByDate.set(dateStr, new Map());
+      }
+      pricesByDate.get(dateStr)!.set(row.product_id, parseFloat(row.avg_price));
+    }
+    
+    // Get all unique dates and sort them
+    const allDates = Array.from(pricesByDate.keys()).sort();
+    
+    if (allDates.length === 0) {
+      return res.json([]);
+    }
+    
+    // For each date, calculate collection value using last known price for each card
+    const lastKnownPrices = new Map<number, number>();
+    const history = [];
+    
+    for (const date of allDates) {
+      const dayPrices = pricesByDate.get(date)!;
+      
+      // Update last known prices
+      for (const [productId, price] of dayPrices) {
+        lastKnownPrices.set(productId, price);
+      }
+      
+      // Calculate collection value for this date
+      let marketValue = 0;
+      let totalCost = 0;
+      
+      for (const [productId, card] of collectionCards) {
+        const price = lastKnownPrices.get(productId) || card.currentPrice;
+        marketValue += price * card.qty;
+        totalCost += card.cost * card.qty;
+      }
+      
+      history.push({
+        snapshot_date: date,
+        total_items: collectionResult.rows.reduce((sum, c) => sum + (parseInt(c.collection_qty) || 1), 0),
+        unique_cards: collectionResult.rows.length,
+        total_cost: totalCost,
+        market_value: marketValue,
+        listing_value: marketValue, // approximation
+        profit_loss: marketValue - totalCost,
+      });
+    }
+    
+    res.json(history);
   } catch (error) {
     console.error('Collection history error:', error);
     res.status(500).json({ error: String(error) });
