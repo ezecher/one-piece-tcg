@@ -1485,37 +1485,36 @@
             </div>
           </div>
           
-          <!-- Cards Tracked Chart -->
-          <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-              <h3 style="color: #ff6b9d; margin: 0; font-size: 1rem;">🃏 Cards Tracked (Market Size)</h3>
-              <div style="color: var(--text-secondary); font-size: 0.875rem;">
-                ${trendsData.market.length > 0 ? 
-                  `Current: <span style="color: #ff6b9d; font-weight: 600;">${trendsData.market[trendsData.market.length - 1]?.cards_tracked?.toLocaleString() || 0}</span> cards` +
-                  (trendsData.market.length > 1 ? 
-                    ` (${trendsData.market[trendsData.market.length - 1]?.cards_tracked > trendsData.market[0]?.cards_tracked ? '+' : ''}${trendsData.market[trendsData.market.length - 1]?.cards_tracked - trendsData.market[0]?.cards_tracked} since ${trendsData.market[0]?.snapshot_date?.slice(5)})` 
-                    : '')
-                  : 'No data'}
-              </div>
-            </div>
-            <div style="height: 200px;">
-              <canvas id="cardsTrackedChart"></canvas>
-            </div>
-          </div>
-          
-          <!-- Sales Charts -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+          <!-- Sales Charts + Cards Tracked -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
             <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
               <h3 style="color: var(--accent-green); margin-bottom: 1rem; font-size: 1rem;">💰 Daily Sales Volume</h3>
-              <div style="height: 250px;">
+              <div style="height: 200px;">
                 <canvas id="salesChart"></canvas>
               </div>
             </div>
             
             <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
               <h3 style="color: var(--accent-purple); margin-bottom: 1rem; font-size: 1rem;">📊 Sales Count Per Day</h3>
-              <div style="height: 250px;">
+              <div style="height: 200px;">
                 <canvas id="countChart"></canvas>
+              </div>
+            </div>
+            
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <h3 style="color: #ff6b9d; margin: 0; font-size: 1rem;">🃏 Cards Tracked</h3>
+                <span style="color: #ff6b9d; font-weight: 600; font-size: 1.25rem;">
+                  ${trendsData.market.length > 0 ? trendsData.market[trendsData.market.length - 1]?.cards_tracked?.toLocaleString() || 0 : '0'}
+                </span>
+              </div>
+              <div style="color: var(--text-secondary); font-size: 0.75rem; margin-bottom: 0.5rem;">
+                ${trendsData.market.length > 1 ? 
+                  `${trendsData.market[trendsData.market.length - 1]?.cards_tracked > trendsData.market[0]?.cards_tracked ? '+' : ''}${trendsData.market[trendsData.market.length - 1]?.cards_tracked - trendsData.market[0]?.cards_tracked} since ${trendsData.market[0]?.snapshot_date?.slice(5)}` 
+                  : 'Market size over time'}
+              </div>
+              <div style="height: 150px;">
+                <canvas id="cardsTrackedChart"></canvas>
               </div>
             </div>
           </div>
