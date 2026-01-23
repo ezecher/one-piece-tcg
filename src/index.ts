@@ -345,6 +345,7 @@ program
         headless: options.headless === true,
         useProxy: options.proxy !== false,
       });
+      process.exit(0);
     } catch (error) {
       console.error('Failed to discover products:', error);
       process.exit(1);
@@ -383,6 +384,7 @@ program
           fastMode: options.fast === true,
         });
       }
+      process.exit(0);
     } catch (error) {
       console.error('Failed to update sales:', error);
       process.exit(1);
@@ -404,6 +406,7 @@ program
         headless: !options.visible && !options.chrome,
         useChrome: options.chrome,
       });
+      process.exit(0);
     } catch (error) {
       console.error('Failed to update listings:', error);
       process.exit(1);
@@ -478,9 +481,12 @@ program
         maxPages: parseInt(options.pages, 10),
         headless: options.headless === true,
       });
+      process.exit(0);
     } catch (error) {
       console.error('Failed to refresh prices:', error);
       process.exit(1);
+    } finally {
+      closeDb();
     }
   });
 
