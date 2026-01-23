@@ -1297,22 +1297,22 @@
           <!-- Set Analysis Charts -->
           <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
             <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
-              <h3 style="color: var(--accent-blue); margin-bottom: 1rem; font-size: 1rem;">🏆 Total Value by Set</h3>
-              <div style="height: 300px;">
+              <h3 style="color: var(--accent-blue); margin-bottom: 1rem; font-size: 1rem;">🏆 Total Value by Set (20+ cards)</h3>
+              <div style="height: 450px;">
                 <canvas id="valueBySetChart"></canvas>
               </div>
             </div>
             
             <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
               <h3 style="color: var(--accent-purple); margin-bottom: 1rem; font-size: 1rem;">💎 Avg Card Price by Set</h3>
-              <div style="height: 300px;">
+              <div style="height: 450px;">
                 <canvas id="avgPriceBySetChart"></canvas>
               </div>
             </div>
             
             <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
               <h3 style="color: var(--accent-green); margin-bottom: 1rem; font-size: 1rem;">🔥 Sales Volume by Set (7d)</h3>
-              <div style="height: 300px;">
+              <div style="height: 450px;">
                 <canvas id="salesBySetChart"></canvas>
               </div>
             </div>
@@ -1512,14 +1512,17 @@
         }
       });
       
-      // Sort sets by total value and take top 10
+      // Filter to major sets (20+ cards) and sort by total value
       const topSets = Object.values(setStats)
-        .sort((a, b) => b.totalValue - a.totalValue)
-        .slice(0, 10);
+        .filter(s => s.cardCount >= 20)  // Only major sets with 20+ cards
+        .sort((a, b) => b.totalValue - a.totalValue);
       
       const setColors = [
         '#ffa502', '#3742fa', '#2ed573', '#ff6b9d', '#745efc',
-        '#ff4757', '#1e90ff', '#ffd32a', '#7bed9f', '#a55eea'
+        '#ff4757', '#1e90ff', '#ffd32a', '#7bed9f', '#a55eea',
+        '#00d2d3', '#ff9f43', '#54a0ff', '#5f27cd', '#ee5a24',
+        '#01a3a4', '#f368e0', '#c8d6e5', '#10ac84', '#ff6b6b',
+        '#48dbfb', '#1dd1a1', '#feca57', '#ff9ff3', '#00d2d3'
       ];
       
       // Value by Set Chart
