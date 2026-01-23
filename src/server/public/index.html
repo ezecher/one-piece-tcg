@@ -1259,49 +1259,377 @@
       renderContent();
     }
 
+    // Chart instances for stats tab
+    let priceDistChart = null;
+    let topMoversChart = null;
+    let valueBySetChart = null;
+    let avgPriceBySetChart = null;
+    let salesBySetChart = null;
+    
     function renderStats(container) {
-      if (statsData.length === 0) {
-        container.innerHTML = '<div class="empty">No sales data yet. Run the sales update first!</div>';
+      if (cardsData.length === 0) {
+        container.innerHTML = '<div class="empty">No cards data yet. Run the scraper first!</div>';
         return;
       }
 
       const withSales = statsData.filter(s => s.sales_count_7d > 0);
 
       container.innerHTML = `
-        <table>
-          <thead>
-            <tr>
-              <th>Card</th>
-              <th>Market</th>
-              <th>7d Avg</th>
-              <th>7d Sales</th>
-              <th>30d Avg</th>
-              <th>Diff</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${withSales.map(stat => {
-              const diff = stat.market_price && stat.avg_price_7d 
-                ? ((stat.avg_price_7d - stat.market_price) / stat.market_price * 100).toFixed(1)
-                : null;
-              const diffClass = diff > 0 ? 'positive' : diff < 0 ? 'negative' : '';
-              return `
-                <tr class="clickable" onclick="showSales(${stat.product_id}, '${escapeHtml(stat.name)}')">
-                  <td>
-                    <div class="card-name">${escapeHtml(stat.name)}</div>
-                    <div class="card-set">${escapeHtml(stat.set_name || '')}</div>
-                  </td>
-                  <td class="price">${formatPrice(stat.market_price)}</td>
-                  <td class="price">${formatPrice(stat.avg_price_7d)}</td>
-                  <td class="sales-count">${stat.sales_count_7d}</td>
-                  <td class="price">${formatPrice(stat.avg_price_30d)}</td>
-                  <td class="price ${diffClass}">${diff ? diff + '%' : 'N/A'}</td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
+        <div style="padding: 1rem;">
+          <h2 style="color: var(--text-primary); font-size: 1.25rem; margin-bottom: 1.5rem;">📊 Price Analytics</h2>
+          
+          <!-- Price Distribution & Top Movers -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+              <h3 style="color: var(--accent-gold); margin-bottom: 1rem; font-size: 1rem;">💰 Price Distribution</h3>
+              <div style="height: 250px;">
+                <canvas id="priceDistChart"></canvas>
+              </div>
+            </div>
+            
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+              <h3 style="color: var(--accent-green); margin-bottom: 1rem; font-size: 1rem;">📈 Top Movers (7 Day Change)</h3>
+              <div id="topMoversContainer" style="height: 250px; overflow-y: auto;">
+              </div>
+            </div>
+          </div>
+          
+          <!-- Set Analysis Charts -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+              <h3 style="color: var(--accent-blue); margin-bottom: 1rem; font-size: 1rem;">🏆 Total Value by Set</h3>
+              <div style="height: 300px;">
+                <canvas id="valueBySetChart"></canvas>
+              </div>
+            </div>
+            
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+              <h3 style="color: var(--accent-purple); margin-bottom: 1rem; font-size: 1rem;">💎 Avg Card Price by Set</h3>
+              <div style="height: 300px;">
+                <canvas id="avgPriceBySetChart"></canvas>
+              </div>
+            </div>
+            
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+              <h3 style="color: var(--accent-green); margin-bottom: 1rem; font-size: 1rem;">🔥 Sales Volume by Set (7d)</h3>
+              <div style="height: 300px;">
+                <canvas id="salesBySetChart"></canvas>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Detailed Stats Table -->
+          <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+            <h3 style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 1rem;">📋 Card Stats (with 7d sales)</h3>
+            <div style="max-height: 400px; overflow-y: auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Card</th>
+                    <th>Market</th>
+                    <th>7d Avg</th>
+                    <th>7d Sales</th>
+                    <th>30d Avg</th>
+                    <th>Diff</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${withSales.slice(0, 50).map(stat => {
+                    const diff = stat.market_price && stat.avg_price_7d 
+                      ? ((stat.avg_price_7d - stat.market_price) / stat.market_price * 100).toFixed(1)
+                      : null;
+                    const diffClass = diff > 0 ? 'positive' : diff < 0 ? 'negative' : '';
+                    return `
+                      <tr class="clickable" onclick="showSales(${stat.product_id}, '${escapeHtml(stat.name)}')">
+                        <td>
+                          <div class="card-name">${escapeHtml(stat.name)}</div>
+                          <div class="card-set">${escapeHtml(stat.set_name || '')}</div>
+                        </td>
+                        <td class="price">${formatPrice(stat.market_price)}</td>
+                        <td class="price">${formatPrice(stat.avg_price_7d)}</td>
+                        <td class="sales-count">${stat.sales_count_7d}</td>
+                        <td class="price">${formatPrice(stat.avg_price_30d)}</td>
+                        <td class="price ${diffClass}">${diff ? diff + '%' : 'N/A'}</td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       `;
+      
+      // Render charts after DOM update
+      setTimeout(() => {
+        renderStatsCharts();
+      }, 100);
+    }
+    
+    function renderStatsCharts() {
+      const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255,255,255,0.1)' },
+            ticks: { color: '#8888a0', maxRotation: 45 }
+          },
+          y: {
+            grid: { color: 'rgba(255,255,255,0.1)' },
+            ticks: { color: '#8888a0' }
+          }
+        }
+      };
+      
+      // Destroy existing charts
+      if (priceDistChart) priceDistChart.destroy();
+      if (valueBySetChart) valueBySetChart.destroy();
+      if (avgPriceBySetChart) avgPriceBySetChart.destroy();
+      if (salesBySetChart) salesBySetChart.destroy();
+      
+      // === PRICE DISTRIBUTION ===
+      const priceBuckets = [
+        { label: '$0-25', min: 0, max: 25, count: 0 },
+        { label: '$25-50', min: 25, max: 50, count: 0 },
+        { label: '$50-100', min: 50, max: 100, count: 0 },
+        { label: '$100-250', min: 100, max: 250, count: 0 },
+        { label: '$250-500', min: 250, max: 500, count: 0 },
+        { label: '$500+', min: 500, max: Infinity, count: 0 },
+      ];
+      
+      cardsData.forEach(card => {
+        const price = card.market_price || 0;
+        for (const bucket of priceBuckets) {
+          if (price >= bucket.min && price < bucket.max) {
+            bucket.count++;
+            break;
+          }
+        }
+      });
+      
+      const priceDistCtx = document.getElementById('priceDistChart');
+      if (priceDistCtx) {
+        priceDistChart = new Chart(priceDistCtx.getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels: priceBuckets.map(b => b.label),
+            datasets: [{
+              label: 'Cards',
+              data: priceBuckets.map(b => b.count),
+              backgroundColor: [
+                'rgba(46, 213, 115, 0.7)',
+                'rgba(55, 66, 250, 0.7)',
+                'rgba(255, 165, 2, 0.7)',
+                'rgba(255, 107, 157, 0.7)',
+                'rgba(116, 94, 252, 0.7)',
+                'rgba(255, 71, 87, 0.7)',
+              ],
+              borderWidth: 0,
+              borderRadius: 4,
+            }]
+          },
+          options: {
+            ...chartOptions,
+            plugins: {
+              ...chartOptions.plugins,
+              tooltip: {
+                callbacks: {
+                  label: ctx => `${ctx.raw} cards`
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      // === TOP MOVERS ===
+      const topMoversContainer = document.getElementById('topMoversContainer');
+      if (topMoversContainer && statsData.length > 0) {
+        // Calculate price change for each card
+        const movers = statsData
+          .filter(s => s.market_price && s.avg_price_7d && s.sales_count_7d >= 2)
+          .map(s => ({
+            ...s,
+            change_pct: ((s.avg_price_7d - s.market_price) / s.market_price * 100)
+          }))
+          .sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct))
+          .slice(0, 15);
+        
+        topMoversContainer.innerHTML = movers.map((card, i) => {
+          const isUp = card.change_pct > 0;
+          const color = isUp ? 'var(--accent-green)' : 'var(--accent-red)';
+          const arrow = isUp ? '▲' : '▼';
+          return `
+            <div 
+              style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; border-bottom: 1px solid var(--border); cursor: pointer;"
+              onclick="showSales(${card.product_id}, '${escapeHtml(card.name)}')"
+              onmouseover="this.style.background='var(--bg-hover)'"
+              onmouseout="this.style.background='transparent'"
+            >
+              <div style="flex: 1; min-width: 0;">
+                <div style="color: var(--text-primary); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                  ${card.name.substring(0, 25)}${card.name.length > 25 ? '...' : ''}
+                </div>
+                <div style="color: var(--text-secondary); font-size: 0.7rem;">
+                  ${formatPrice(card.market_price)} → ${formatPrice(card.avg_price_7d)}
+                </div>
+              </div>
+              <div style="color: ${color}; font-weight: 600; font-size: 0.9rem; margin-left: 0.5rem;">
+                ${arrow} ${Math.abs(card.change_pct).toFixed(1)}%
+              </div>
+            </div>
+          `;
+        }).join('') || '<div style="color: var(--text-secondary); text-align: center; padding: 2rem;">Not enough sales data</div>';
+      }
+      
+      // === SET ANALYSIS ===
+      const setStats = {};
+      cardsData.forEach(card => {
+        const setName = card.set_name || 'Unknown';
+        if (!setStats[setName]) {
+          setStats[setName] = {
+            name: setName,
+            totalValue: 0,
+            cardCount: 0,
+            salesCount: 0,
+            salesVolume: 0
+          };
+        }
+        setStats[setName].totalValue += card.market_price || 0;
+        setStats[setName].cardCount++;
+      });
+      
+      // Add sales data to sets
+      statsData.forEach(stat => {
+        const setName = stat.set_name || 'Unknown';
+        if (setStats[setName]) {
+          setStats[setName].salesCount += stat.sales_count_7d || 0;
+          setStats[setName].salesVolume += (stat.avg_price_7d || 0) * (stat.sales_count_7d || 0);
+        }
+      });
+      
+      // Sort sets by total value and take top 10
+      const topSets = Object.values(setStats)
+        .sort((a, b) => b.totalValue - a.totalValue)
+        .slice(0, 10);
+      
+      const setColors = [
+        '#ffa502', '#3742fa', '#2ed573', '#ff6b9d', '#745efc',
+        '#ff4757', '#1e90ff', '#ffd32a', '#7bed9f', '#a55eea'
+      ];
+      
+      // Value by Set Chart
+      const valueBySetCtx = document.getElementById('valueBySetChart');
+      if (valueBySetCtx && topSets.length > 0) {
+        valueBySetChart = new Chart(valueBySetCtx.getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels: topSets.map(s => s.name.length > 15 ? s.name.substring(0, 15) + '...' : s.name),
+            datasets: [{
+              data: topSets.map(s => s.totalValue),
+              backgroundColor: setColors.map(c => c + 'cc'),
+              borderWidth: 0,
+              borderRadius: 4,
+            }]
+          },
+          options: {
+            ...chartOptions,
+            indexAxis: 'y',
+            plugins: {
+              ...chartOptions.plugins,
+              tooltip: {
+                callbacks: {
+                  label: ctx => formatPrice(ctx.raw)
+                }
+              }
+            },
+            scales: {
+              ...chartOptions.scales,
+              x: {
+                ...chartOptions.scales.x,
+                ticks: {
+                  ...chartOptions.scales.x.ticks,
+                  callback: v => '$' + (v/1000).toFixed(0) + 'k'
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      // Avg Price by Set Chart
+      const avgPriceBySetCtx = document.getElementById('avgPriceBySetChart');
+      if (avgPriceBySetCtx && topSets.length > 0) {
+        const setsByAvg = [...topSets].sort((a, b) => (b.totalValue/b.cardCount) - (a.totalValue/a.cardCount));
+        avgPriceBySetChart = new Chart(avgPriceBySetCtx.getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels: setsByAvg.map(s => s.name.length > 15 ? s.name.substring(0, 15) + '...' : s.name),
+            datasets: [{
+              data: setsByAvg.map(s => s.totalValue / s.cardCount),
+              backgroundColor: setColors.map(c => c + 'cc'),
+              borderWidth: 0,
+              borderRadius: 4,
+            }]
+          },
+          options: {
+            ...chartOptions,
+            indexAxis: 'y',
+            plugins: {
+              ...chartOptions.plugins,
+              tooltip: {
+                callbacks: {
+                  label: ctx => formatPrice(ctx.raw) + ' avg'
+                }
+              }
+            },
+            scales: {
+              ...chartOptions.scales,
+              x: {
+                ...chartOptions.scales.x,
+                ticks: {
+                  ...chartOptions.scales.x.ticks,
+                  callback: v => '$' + v.toFixed(0)
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      // Sales Volume by Set Chart
+      const salesBySetCtx = document.getElementById('salesBySetChart');
+      if (salesBySetCtx && topSets.length > 0) {
+        const setsBySales = [...topSets].sort((a, b) => b.salesCount - a.salesCount);
+        salesBySetChart = new Chart(salesBySetCtx.getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels: setsBySales.map(s => s.name.length > 15 ? s.name.substring(0, 15) + '...' : s.name),
+            datasets: [{
+              data: setsBySales.map(s => s.salesCount),
+              backgroundColor: setColors.map(c => c + 'cc'),
+              borderWidth: 0,
+              borderRadius: 4,
+            }]
+          },
+          options: {
+            ...chartOptions,
+            indexAxis: 'y',
+            plugins: {
+              ...chartOptions.plugins,
+              tooltip: {
+                callbacks: {
+                  label: ctx => ctx.raw + ' sales'
+                }
+              }
+            }
+          }
+        });
+      }
     }
 
     // Deals sorting state
