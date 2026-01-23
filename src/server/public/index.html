@@ -2424,13 +2424,13 @@
                 <td class="set-name">${escapeHtml(card.set_name || 'N/A')}</td>
                 <td style="text-align: right;">
                   <input type="number" 
+                    id="price-${card.product_id}"
                     value="${card.purchase_price || ''}" 
-                    placeholder="$0.00"
+                    placeholder="0.00"
                     step="0.01"
                     min="0"
                     style="width: 70px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 4px 6px; border-radius: 4px; text-align: right; font-size: 0.85rem;"
-                    onchange="window.setPurchasePrice(${card.product_id}, this.value)"
-                    onblur="window.setPurchasePrice(${card.product_id}, this.value)"
+                    onchange="window.setPurchasePrice(${card.product_id}, this.value, this)"
                   />
                 </td>
                 <td class="price" style="text-align: right;">${card.market_price ? formatPrice(card.market_price) : '—'}</td>
@@ -2541,26 +2541,45 @@
     window.setQty = setQty;
 
     // Set purchase price for a collection item
-    async function setPurchasePrice(productId, priceValue) {
+    let priceUpdatePending = {};
+    async function setPurchasePrice(productId, priceValue, inputEl) {
+      // Debounce - don't fire if we already have a pending update for this product
+      if (priceUpdatePending[productId]) return;
+      
       const price = parseFloat(priceValue);
       if (isNaN(price) && priceValue !== '') return;
       
+      priceUpdatePending[productId] = true;
+      
       try {
-        // Update via the collection API (no auth needed for now)
-        await fetch(`/api/collection/${productId}/price`, {
+        const response = await fetch(`/api/collection/${productId}/price`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ purchase_price: priceValue === '' ? null : price })
         });
         
-        // Reload collection data and re-render
-        const collectionResponse = await fetch('/api/collection');
-        if (collectionResponse.ok) {
-          collectionData = await collectionResponse.json();
+        if (response.ok) {
+          // Update local data without full reload
+          const card = collectionData.cards.find(c => c.product_id === productId);
+          if (card) {
+            card.purchase_price = priceValue === '' ? null : price;
+          }
+          // Brief visual feedback
+          if (inputEl) {
+            inputEl.style.borderColor = 'var(--accent-green)';
+            setTimeout(() => { inputEl.style.borderColor = 'var(--border)'; }, 500);
+          }
+        } else {
+          console.error('Failed to save purchase price');
+          if (inputEl) {
+            inputEl.style.borderColor = '#ff6b6b';
+            setTimeout(() => { inputEl.style.borderColor = 'var(--border)'; }, 1000);
+          }
         }
-        renderContent();
       } catch (error) {
         console.error('Error setting purchase price:', error);
+      } finally {
+        priceUpdatePending[productId] = false;
       }
     }
     window.setPurchasePrice = setPurchasePrice;
