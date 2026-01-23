@@ -2480,11 +2480,13 @@
     // Render collection value/profit charts
     async function renderCollectionCharts() {
       try {
+        const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+        
         // Save current snapshot first
-        await fetch('/api/collection/snapshot', { method: 'POST' });
+        await fetch('/api/collection/snapshot', { method: 'POST', headers });
         
         // Load history
-        const response = await fetch('/api/collection/history?days=30');
+        const response = await fetch('/api/collection/history?days=30', { headers });
         if (!response.ok) return;
         collectionHistoryData = await response.json();
         

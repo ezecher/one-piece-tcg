@@ -666,30 +666,44 @@ app.post('/api/collection/:productId/price', async (req, res) => {
 });
 
 // Get collection history (calculated from historical sales data)
-app.get('/api/collection/history', async (req, res) => {
+app.get('/api/collection/history', optionalAuth, async (req: any, res) => {
   try {
     const days = parseInt(req.query.days as string) || 30;
     
-    // Get collection cards with their purchase prices
-    const collectionResult = await getPool().query(`
-      SELECT product_id, collection_qty, purchase_price, market_price
-      FROM cards 
-      WHERE in_collection = true
-    `);
+    // Get collection cards - check if user is logged in
+    let collectionResult;
+    if (req.userId) {
+      // Logged-in user: get from user_collection table
+      collectionResult = await getPool().query(`
+        SELECT uc.product_id, uc.quantity as collection_qty, uc.purchase_price, c.market_price
+        FROM user_collection uc
+        JOIN cards c ON uc.product_id = c.product_id
+        WHERE uc.user_id = $1
+      `, [req.userId]);
+    } else {
+      // Guest: get from cards table
+      collectionResult = await getPool().query(`
+        SELECT product_id, collection_qty, purchase_price, market_price
+        FROM cards 
+        WHERE in_collection = true
+      `);
+    }
     
     if (collectionResult.rows.length === 0) {
       return res.json([]);
     }
     
     const productIds = collectionResult.rows.map(c => c.product_id);
-    const collectionCards = new Map(collectionResult.rows.map(c => [
-      c.product_id, 
-      { 
-        qty: parseInt(c.collection_qty) || 1, 
-        cost: parseFloat(c.purchase_price) || 0,
-        currentPrice: parseFloat(c.market_price) || 0
-      }
-    ]));
+    const collectionCards = new Map<number, { qty: number; cost: number; currentPrice: number }>(
+      collectionResult.rows.map(c => [
+        c.product_id, 
+        { 
+          qty: parseInt(c.collection_qty) || 1, 
+          cost: parseFloat(c.purchase_price) || 0,
+          currentPrice: parseFloat(c.market_price) || 0
+        }
+      ])
+    );
     
     // Get daily average prices for collection cards from sales history
     const priceHistoryResult = await getPool().query(`
@@ -762,11 +776,10 @@ app.get('/api/collection/history', async (req, res) => {
 });
 
 // Save collection snapshot (call this daily or on-demand)
-app.post('/api/collection/snapshot', async (req, res) => {
+app.post('/api/collection/snapshot', optionalAuth, async (req: any, res) => {
   try {
-    const { pgSaveCollectionSnapshot } = await import('../db/postgres.js');
-    const snapshot = await pgSaveCollectionSnapshot();
-    res.json({ success: true, snapshot });
+    // For now, just acknowledge - the history is calculated dynamically
+    res.json({ success: true });
   } catch (error) {
     console.error('Save collection snapshot error:', error);
     res.status(500).json({ error: String(error) });
