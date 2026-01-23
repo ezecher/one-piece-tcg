@@ -1547,12 +1547,12 @@
                 <thead>
                   <tr>
                     <th>Date</th>
-                    <th style="color: var(--accent-gold);">Market Value</th>
-                    <th style="color: var(--accent-blue);">Listing Value</th>
+                    <th>Market Value</th>
+                    <th>Listing Value</th>
                     <th style="color: var(--accent-green);">Sales Volume</th>
                     <th>Sales #</th>
-                    <th style="color: var(--accent-purple);">Avg Price</th>
-                    <th style="color: #ff6b9d;">Cards</th>
+                    <th>Avg Price</th>
+                    <th>Cards</th>
                   </tr>
                 </thead>
                 <tbody id="dailySummaryBody">
@@ -1586,43 +1586,41 @@
       const tbody = document.getElementById('dailySummaryBody');
       if (!tbody) return;
       
-      // Combine market snapshots with sales data
+      // Create maps for easy lookup
       const marketMap = new Map();
       trendsData.market.forEach(m => {
         marketMap.set(m.snapshot_date, m);
       });
       
-      // Create combined data array
-      const combinedData = [];
-      const seenDates = new Set();
-      
-      // Add market snapshot data
-      trendsData.market.forEach(m => {
-        seenDates.add(m.snapshot_date);
-        combinedData.push({
-          date: m.snapshot_date,
-          market_value: m.total_market_value || 0,
-          listing_value: m.total_listing_value || 0,
-          sales_volume: m.total_sales_value || 0,
-          sales_count: m.sales_count || 0,
-          cards_tracked: m.cards_tracked || 0,
-          avg_price: m.sales_count > 0 ? (m.total_sales_value / m.sales_count) : 0
-        });
+      const salesMap = new Map();
+      trendsData.sales.forEach(s => {
+        salesMap.set(s.date, s);
       });
       
-      // Add sales data for dates not in market snapshots
-      trendsData.sales.forEach(s => {
-        if (!seenDates.has(s.date)) {
-          combinedData.push({
-            date: s.date,
-            market_value: 0,
-            listing_value: 0,
-            sales_volume: s.total_value || 0,
-            sales_count: s.sales_count || 0,
-            cards_tracked: 0,
-            avg_price: s.sales_count > 0 ? (s.total_value / s.sales_count) : 0
-          });
-        }
+      // Get all unique dates
+      const allDates = new Set([
+        ...trendsData.market.map(m => m.snapshot_date),
+        ...trendsData.sales.map(s => s.date)
+      ]);
+      
+      // Create combined data array - use SALES data for sales, MARKET data for market/listing
+      const combinedData = Array.from(allDates).map(date => {
+        const market = marketMap.get(date) || {};
+        const sales = salesMap.get(date) || {};
+        
+        // Use actual sales data for sales volume/count (more accurate)
+        const salesVolume = sales.total_value || 0;
+        const salesCount = sales.sales_count || 0;
+        
+        return {
+          date,
+          market_value: market.total_market_value || 0,
+          listing_value: market.total_listing_value || 0,
+          sales_volume: salesVolume,
+          sales_count: salesCount,
+          cards_tracked: market.cards_tracked || 0,
+          avg_price: salesCount > 0 ? (salesVolume / salesCount) : 0
+        };
       });
       
       // Sort by date descending
@@ -1633,13 +1631,13 @@
       
       tbody.innerHTML = displayData.map(d => `
         <tr>
-          <td>${d.date}</td>
-          <td style="color: var(--accent-gold);">${d.market_value > 0 ? formatPrice(d.market_value) : '-'}</td>
-          <td style="color: var(--accent-blue);">${d.listing_value > 0 ? formatPrice(d.listing_value) : '-'}</td>
-          <td style="color: var(--accent-green);">${d.sales_volume > 0 ? formatPrice(d.sales_volume) : '-'}</td>
-          <td>${d.sales_count > 0 ? d.sales_count.toLocaleString() : '-'}</td>
-          <td style="color: var(--accent-purple);">${d.avg_price > 0 ? formatPrice(d.avg_price) : '-'}</td>
-          <td style="color: #ff6b9d;">${d.cards_tracked > 0 ? d.cards_tracked.toLocaleString() : '-'}</td>
+          <td style="color: var(--text-primary);">${d.date}</td>
+          <td style="color: var(--text-primary);">${d.market_value > 0 ? formatPrice(d.market_value) : '<span style="color: var(--text-secondary);">-</span>'}</td>
+          <td style="color: var(--text-primary);">${d.listing_value > 0 ? formatPrice(d.listing_value) : '<span style="color: var(--text-secondary);">-</span>'}</td>
+          <td style="color: var(--accent-green);">${d.sales_volume > 0 ? formatPrice(d.sales_volume) : '<span style="color: var(--text-secondary);">-</span>'}</td>
+          <td style="color: var(--text-primary);">${d.sales_count > 0 ? d.sales_count.toLocaleString() : '<span style="color: var(--text-secondary);">-</span>'}</td>
+          <td style="color: var(--text-primary);">${d.avg_price > 0 ? formatPrice(d.avg_price) : '<span style="color: var(--text-secondary);">-</span>'}</td>
+          <td style="color: var(--text-primary);">${d.cards_tracked > 0 ? d.cards_tracked.toLocaleString() : '<span style="color: var(--text-secondary);">-</span>'}</td>
         </tr>
       `).join('') || '<tr><td colspan="7" style="text-align:center; color: var(--text-secondary);">No data yet</td></tr>';
     }
