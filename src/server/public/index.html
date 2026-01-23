@@ -1433,6 +1433,7 @@
     let marketValueChart = null;
     let listingValueChart = null;
     let lastSaleValueChart = null;
+    let cardsTrackedChart = null;
     
     async function loadTrendsData() {
       try {
@@ -1481,6 +1482,24 @@
               <div style="height: 250px;">
                 <canvas id="lastSaleValueChart"></canvas>
               </div>
+            </div>
+          </div>
+          
+          <!-- Cards Tracked Chart -->
+          <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+              <h3 style="color: #ff6b9d; margin: 0; font-size: 1rem;">🃏 Cards Tracked (Market Size)</h3>
+              <div style="color: var(--text-secondary); font-size: 0.875rem;">
+                ${trendsData.market.length > 0 ? 
+                  `Current: <span style="color: #ff6b9d; font-weight: 600;">${trendsData.market[trendsData.market.length - 1]?.cards_tracked?.toLocaleString() || 0}</span> cards` +
+                  (trendsData.market.length > 1 ? 
+                    ` (${trendsData.market[trendsData.market.length - 1]?.cards_tracked > trendsData.market[0]?.cards_tracked ? '+' : ''}${trendsData.market[trendsData.market.length - 1]?.cards_tracked - trendsData.market[0]?.cards_tracked} since ${trendsData.market[0]?.snapshot_date?.slice(5)})` 
+                    : '')
+                  : 'No data'}
+              </div>
+            </div>
+            <div style="height: 200px;">
+              <canvas id="cardsTrackedChart"></canvas>
             </div>
           </div>
           
@@ -1575,6 +1594,7 @@
       if (marketValueChart) marketValueChart.destroy();
       if (listingValueChart) listingValueChart.destroy();
       if (lastSaleValueChart) lastSaleValueChart.destroy();
+      if (cardsTrackedChart) cardsTrackedChart.destroy();
       
       // Market Value Chart (from market snapshots)
       const marketCtx = document.getElementById('marketValueChart');
@@ -1665,6 +1685,41 @@
                 ticks: {
                   ...chartOptions.scales.y.ticks,
                   callback: v => '$' + (v/1000).toFixed(0) + 'k'
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      // Cards Tracked Chart (market size growth)
+      const cardsCtx = document.getElementById('cardsTrackedChart');
+      if (cardsCtx && trendsData.market.length > 0) {
+        cardsTrackedChart = new Chart(cardsCtx.getContext('2d'), {
+          type: 'line',
+          data: {
+            labels: trendsData.market.map(d => d.snapshot_date.slice(5)),
+            datasets: [{
+              label: 'Cards Tracked',
+              data: trendsData.market.map(d => d.cards_tracked || 0),
+              borderColor: '#ff6b9d',
+              backgroundColor: 'rgba(255, 107, 157, 0.1)',
+              fill: true,
+              tension: 0.4,
+              pointRadius: 4,
+              pointBackgroundColor: '#ff6b9d',
+            }]
+          },
+          options: {
+            ...chartOptions,
+            scales: {
+              ...chartOptions.scales,
+              y: {
+                ...chartOptions.scales.y,
+                beginAtZero: false,
+                ticks: {
+                  ...chartOptions.scales.y.ticks,
+                  callback: v => v.toLocaleString()
                 }
               }
             }
