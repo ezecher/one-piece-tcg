@@ -2482,8 +2482,26 @@
       try {
         const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
         
-        // Save current snapshot first
-        await fetch('/api/collection/snapshot', { method: 'POST', headers });
+        const chartOptions = {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: true, labels: { color: '#fff' } },
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255,255,255,0.1)' },
+              ticks: { color: '#8888a0', maxRotation: 45 }
+            },
+            y: {
+              grid: { color: 'rgba(255,255,255,0.1)' },
+              ticks: { color: '#8888a0' }
+            }
+          }
+        };
+        
+        // Save current snapshot first (just in case)
+        await fetch('/api/collection/snapshot', { method: 'POST', headers }).catch(() => {});
         
         // Load history
         const response = await fetch('/api/collection/history?days=30', { headers });
