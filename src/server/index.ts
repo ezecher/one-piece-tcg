@@ -648,15 +648,16 @@ app.post('/api/collection/:productId/price', async (req, res) => {
     const productId = parseInt(req.params.productId);
     const purchasePrice = req.body?.purchase_price !== undefined ? parseFloat(req.body.purchase_price) : null;
     
+    // Update purchase price for any card (don't require in_collection = true)
     const result = await getPool().query(
-      `UPDATE cards SET purchase_price = $2 WHERE product_id = $1 AND in_collection = true RETURNING *`,
+      `UPDATE cards SET purchase_price = $2 WHERE product_id = $1 RETURNING *`,
       [productId, purchasePrice]
     );
     
     if (result.rowCount && result.rowCount > 0) {
       res.json({ success: true, purchase_price: result.rows[0].purchase_price });
     } else {
-      res.status(404).json({ success: false, message: 'Card not found in collection' });
+      res.status(404).json({ success: false, message: 'Card not found' });
     }
   } catch (error) {
     console.error('Set purchase price error:', error);
