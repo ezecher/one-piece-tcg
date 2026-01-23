@@ -376,11 +376,39 @@ app.get('/api/cards', async (req, res) => {
 // Get card stats with averages (PostgreSQL)
 app.get('/api/stats', async (req, res) => {
   try {
-    // Simplified stats from PostgreSQL
-    const cards = await pgGetAllCards();
-    const stats = cards.map(card => ({
-      ...card,
-      avg_price: card.last_sale_price || card.market_price,
+    // Get cards with 7-day sales statistics
+    const pool = (await import('../db/postgres.js')).getPool();
+    const result = await pool.query(`
+      SELECT 
+        c.*,
+        (SELECT price FROM sale_events WHERE product_id = c.product_id ORDER BY sold_at DESC LIMIT 1) as last_sale_price,
+        (SELECT sold_at FROM sale_events WHERE product_id = c.product_id ORDER BY sold_at DESC LIMIT 1) as last_sale_date,
+        COALESCE(s.sales_count_7d, 0) as sales_count_7d,
+        COALESCE(s.avg_price_7d, 0) as avg_price_7d,
+        COALESCE(s.total_sales_7d, 0) as total_sales_7d
+      FROM cards c
+      LEFT JOIN (
+        SELECT 
+          product_id,
+          COUNT(*) as sales_count_7d,
+          AVG(price) as avg_price_7d,
+          SUM(price) as total_sales_7d
+        FROM sale_events
+        WHERE sold_at >= NOW() - INTERVAL '7 days'
+        GROUP BY product_id
+      ) s ON c.product_id = s.product_id
+      ORDER BY c.market_price DESC NULLS LAST
+    `);
+    
+    const stats = result.rows.map(row => ({
+      ...row,
+      market_price: row.market_price ? parseFloat(String(row.market_price)) : null,
+      lowest_listing: row.lowest_listing ? parseFloat(String(row.lowest_listing)) : null,
+      last_sale_price: row.last_sale_price ? parseFloat(String(row.last_sale_price)) : null,
+      sales_count_7d: parseInt(String(row.sales_count_7d)) || 0,
+      avg_price_7d: row.avg_price_7d ? parseFloat(String(row.avg_price_7d)) : 0,
+      total_sales_7d: row.total_sales_7d ? parseFloat(String(row.total_sales_7d)) : 0,
+      avg_price: row.last_sale_price ? parseFloat(String(row.last_sale_price)) : (row.market_price ? parseFloat(String(row.market_price)) : null),
     }));
     res.json(stats);
   } catch (error) {
