@@ -214,6 +214,25 @@ export async function initPostgres(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_snapshot_date ON daily_market_snapshot(snapshot_date)
     `);
     
+    // Create collection_snapshot table for tracking collection value over time
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS collection_snapshot (
+        id SERIAL PRIMARY KEY,
+        snapshot_date DATE UNIQUE NOT NULL,
+        total_items INTEGER DEFAULT 0,
+        unique_cards INTEGER DEFAULT 0,
+        total_cost DECIMAL(12, 2) DEFAULT 0,
+        market_value DECIMAL(12, 2) DEFAULT 0,
+        listing_value DECIMAL(12, 2) DEFAULT 0,
+        profit_loss DECIMAL(12, 2) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_collection_snapshot_date ON collection_snapshot(snapshot_date)
+    `);
+    
     console.log('PostgreSQL tables initialized (including cards, sales, and market snapshots)');
   } finally {
     client.release();
@@ -1152,5 +1171,107 @@ export async function pgMarkCardSeen(productId: number): Promise<void> {
     `UPDATE cards SET last_seen_at = NOW() WHERE product_id = $1`,
     [productId]
   );
+}
+
+// ============ Collection Snapshot Functions ============
+
+export interface CollectionSnapshot {
+  snapshot_date: string;
+  total_items: number;
+  unique_cards: number;
+  total_cost: number;
+  market_value: number;
+  listing_value: number;
+  profit_loss: number;
+}
+
+/**
+ * Save a collection snapshot for today
+ */
+export async function pgSaveCollectionSnapshot(): Promise<CollectionSnapshot | null> {
+  // Calculate collection values from cards table
+  const result = await getPool().query<{
+    total_items: string;
+    unique_cards: string;
+    total_cost: string;
+    market_value: string;
+    listing_value: string;
+  }>(`
+    SELECT 
+      COALESCE(SUM(collection_qty), 0) as total_items,
+      COUNT(*) as unique_cards,
+      COALESCE(SUM(COALESCE(purchase_price, 0) * COALESCE(collection_qty, 1)), 0) as total_cost,
+      COALESCE(SUM(COALESCE(market_price, 0) * COALESCE(collection_qty, 1)), 0) as market_value,
+      COALESCE(SUM(COALESCE(lowest_listing, 0) * COALESCE(collection_qty, 1)), 0) as listing_value
+    FROM cards
+    WHERE in_collection = true
+  `);
+  
+  if (result.rows.length === 0) return null;
+  
+  const data = result.rows[0];
+  const totalCost = parseFloat(data.total_cost) || 0;
+  const marketValue = parseFloat(data.market_value) || 0;
+  const profitLoss = marketValue - totalCost;
+  
+  // Upsert snapshot
+  await getPool().query(`
+    INSERT INTO collection_snapshot 
+      (snapshot_date, total_items, unique_cards, total_cost, market_value, listing_value, profit_loss)
+    VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6)
+    ON CONFLICT (snapshot_date) DO UPDATE SET
+      total_items = $1,
+      unique_cards = $2,
+      total_cost = $3,
+      market_value = $4,
+      listing_value = $5,
+      profit_loss = $6
+  `, [
+    parseInt(data.total_items) || 0,
+    parseInt(data.unique_cards) || 0,
+    totalCost,
+    marketValue,
+    parseFloat(data.listing_value) || 0,
+    profitLoss,
+  ]);
+  
+  return {
+    snapshot_date: new Date().toISOString().split('T')[0],
+    total_items: parseInt(data.total_items) || 0,
+    unique_cards: parseInt(data.unique_cards) || 0,
+    total_cost: totalCost,
+    market_value: marketValue,
+    listing_value: parseFloat(data.listing_value) || 0,
+    profit_loss: profitLoss,
+  };
+}
+
+/**
+ * Get collection snapshots for the last N days
+ */
+export async function pgGetCollectionSnapshots(days: number = 30): Promise<CollectionSnapshot[]> {
+  const result = await getPool().query<{
+    snapshot_date: Date;
+    total_items: string;
+    unique_cards: string;
+    total_cost: string;
+    market_value: string;
+    listing_value: string;
+    profit_loss: string;
+  }>(`
+    SELECT * FROM collection_snapshot
+    WHERE snapshot_date >= NOW() - INTERVAL '${days} days'
+    ORDER BY snapshot_date ASC
+  `);
+  
+  return result.rows.map(row => ({
+    snapshot_date: row.snapshot_date.toISOString().split('T')[0],
+    total_items: parseInt(row.total_items) || 0,
+    unique_cards: parseInt(row.unique_cards) || 0,
+    total_cost: parseFloat(row.total_cost) || 0,
+    market_value: parseFloat(row.market_value) || 0,
+    listing_value: parseFloat(row.listing_value) || 0,
+    profit_loss: parseFloat(row.profit_loss) || 0,
+  }));
 }
 

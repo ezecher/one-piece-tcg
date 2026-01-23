@@ -665,6 +665,31 @@ app.post('/api/collection/:productId/price', async (req, res) => {
   }
 });
 
+// Get collection history (snapshots over time)
+app.get('/api/collection/history', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days as string) || 30;
+    const { pgGetCollectionSnapshots } = await import('../db/postgres.js');
+    const snapshots = await pgGetCollectionSnapshots(days);
+    res.json(snapshots);
+  } catch (error) {
+    console.error('Collection history error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Save collection snapshot (call this daily or on-demand)
+app.post('/api/collection/snapshot', async (req, res) => {
+  try {
+    const { pgSaveCollectionSnapshot } = await import('../db/postgres.js');
+    const snapshot = await pgSaveCollectionSnapshot();
+    res.json({ success: true, snapshot });
+  } catch (error) {
+    console.error('Save collection snapshot error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
 // ============ Database Status API ============
 
 // Get database status (PostgreSQL - no more file sync needed!)

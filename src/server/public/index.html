@@ -1266,6 +1266,11 @@
     let avgPriceBySetChart = null;
     let salesBySetChart = null;
     
+    // Chart instances for collection tab
+    let collectionValueChart = null;
+    let collectionProfitChart = null;
+    let collectionHistoryData = [];
+    
     function renderStats(container) {
       if (cardsData.length === 0) {
         container.innerHTML = '<div class="empty">No cards data yet. Run the scraper first!</div>';
@@ -2383,6 +2388,23 @@
             <div style="color: var(--text-secondary); font-size: 0.75rem;">Lowest listings</div>
           </div>
         </div>
+        
+        <!-- Collection Value Charts -->
+        <div id="collectionChartsContainer" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+          <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+            <h3 style="color: var(--accent-blue); margin-bottom: 1rem; font-size: 1rem;">📈 Collection Value Over Time</h3>
+            <div style="height: 200px;">
+              <canvas id="collectionValueChart"></canvas>
+            </div>
+          </div>
+          <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+            <h3 style="color: var(--accent-green); margin-bottom: 1rem; font-size: 1rem;">💰 Profit / Loss Over Time</h3>
+            <div style="height: 200px;">
+              <canvas id="collectionProfitChart"></canvas>
+            </div>
+          </div>
+        </div>
+        
         <table>
           <thead>
             <tr>
@@ -2450,6 +2472,135 @@
           </tbody>
         </table>
       `;
+      
+      // Load and render collection charts
+      renderCollectionCharts();
+    }
+    
+    // Render collection value/profit charts
+    async function renderCollectionCharts() {
+      try {
+        // Save current snapshot first
+        await fetch('/api/collection/snapshot', { method: 'POST' });
+        
+        // Load history
+        const response = await fetch('/api/collection/history?days=30');
+        if (!response.ok) return;
+        collectionHistoryData = await response.json();
+        
+        if (collectionHistoryData.length < 2) {
+          // Not enough data yet
+          const container = document.getElementById('collectionChartsContainer');
+          if (container) {
+            container.innerHTML = `
+              <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; text-align: center; grid-column: span 2;">
+                <p style="color: var(--text-secondary);">📊 Collection history will appear here after a few days of tracking.</p>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.5rem;">Snapshots are saved daily to track your collection's performance.</p>
+              </div>
+            `;
+          }
+          return;
+        }
+        
+        const labels = collectionHistoryData.map(d => d.snapshot_date.slice(5)); // MM-DD format
+        
+        // Destroy existing charts
+        if (collectionValueChart) collectionValueChart.destroy();
+        if (collectionProfitChart) collectionProfitChart.destroy();
+        
+        // Collection Value Chart
+        const valueCtx = document.getElementById('collectionValueChart');
+        if (valueCtx) {
+          collectionValueChart = new Chart(valueCtx.getContext('2d'), {
+            type: 'line',
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: 'Market Value',
+                  data: collectionHistoryData.map(d => d.market_value),
+                  borderColor: '#60a5fa',
+                  backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                  fill: true,
+                  tension: 0.3,
+                },
+                {
+                  label: 'Total Cost',
+                  data: collectionHistoryData.map(d => d.total_cost),
+                  borderColor: '#a78bfa',
+                  backgroundColor: 'transparent',
+                  borderDash: [5, 5],
+                  tension: 0.3,
+                }
+              ]
+            },
+            options: {
+              ...chartOptions,
+              plugins: {
+                ...chartOptions.plugins,
+                tooltip: {
+                  callbacks: {
+                    label: ctx => ctx.dataset.label + ': ' + formatPrice(ctx.raw)
+                  }
+                }
+              },
+              scales: {
+                ...chartOptions.scales,
+                y: {
+                  ...chartOptions.scales.y,
+                  ticks: {
+                    ...chartOptions.scales.y.ticks,
+                    callback: v => '$' + (v/1000).toFixed(0) + 'k'
+                  }
+                }
+              }
+            }
+          });
+        }
+        
+        // Profit/Loss Chart
+        const profitCtx = document.getElementById('collectionProfitChart');
+        if (profitCtx) {
+          const profitData = collectionHistoryData.map(d => d.profit_loss);
+          collectionProfitChart = new Chart(profitCtx.getContext('2d'), {
+            type: 'line',
+            data: {
+              labels,
+              datasets: [{
+                label: 'Profit/Loss',
+                data: profitData,
+                borderColor: profitData[profitData.length - 1] >= 0 ? '#34d399' : '#f87171',
+                backgroundColor: profitData[profitData.length - 1] >= 0 ? 'rgba(52, 211, 153, 0.1)' : 'rgba(248, 113, 113, 0.1)',
+                fill: true,
+                tension: 0.3,
+              }]
+            },
+            options: {
+              ...chartOptions,
+              plugins: {
+                ...chartOptions.plugins,
+                tooltip: {
+                  callbacks: {
+                    label: ctx => (ctx.raw >= 0 ? '+' : '') + formatPrice(ctx.raw)
+                  }
+                }
+              },
+              scales: {
+                ...chartOptions.scales,
+                y: {
+                  ...chartOptions.scales.y,
+                  ticks: {
+                    ...chartOptions.scales.y.ticks,
+                    callback: v => (v >= 0 ? '+' : '') + '$' + (v/1000).toFixed(1) + 'k'
+                  }
+                }
+              }
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error loading collection charts:', error);
+      }
     }
 
     // Toggle collection
