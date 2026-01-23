@@ -2559,16 +2559,18 @@
         });
         
         if (response.ok) {
-          // Update local data without full reload
+          // Update local data
           const card = collectionData.cards.find(c => c.product_id === productId);
           if (card) {
             card.purchase_price = priceValue === '' ? null : price;
           }
-          // Brief visual feedback
-          if (inputEl) {
-            inputEl.style.borderColor = 'var(--accent-green)';
-            setTimeout(() => { inputEl.style.borderColor = 'var(--border)'; }, 500);
-          }
+          // Re-render to update profit/loss display
+          renderContent();
+          // Re-focus the input after render
+          setTimeout(() => {
+            const newInput = document.getElementById(`price-${productId}`);
+            if (newInput) newInput.focus();
+          }, 50);
         } else {
           console.error('Failed to save purchase price');
           if (inputEl) {
