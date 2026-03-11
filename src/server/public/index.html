@@ -1270,6 +1270,7 @@
     let collectionValueChart = null;
     let collectionProfitChart = null;
     let collectionHistoryData = [];
+    let collectionHistoryDays = 90; // Default to 90 days for better historical view
     
     function renderStats(container) {
       if (cardsData.length === 0) {
@@ -1776,17 +1777,27 @@
     let listingValueChart = null;
     let lastSaleValueChart = null;
     let cardsTrackedChart = null;
+    let trendsDays = 90; // Default to 90 days for better historical view
     
     async function loadTrendsData() {
       try {
         const [salesRes, marketRes] = await Promise.all([
-          fetch('/api/trends/sales?days=30'),
-          fetch('/api/trends/market?days=30')
+          fetch(`/api/trends/sales?days=${trendsDays}`),
+          fetch(`/api/trends/market?days=${trendsDays}`)
         ]);
         trendsData.sales = await salesRes.json();
         trendsData.market = await marketRes.json();
       } catch (error) {
         console.error('Failed to load trends:', error);
+      }
+    }
+    
+    async function changeTrendsPeriod(days) {
+      trendsDays = days;
+      await loadTrendsData();
+      const container = document.getElementById('trendsContent');
+      if (container) {
+        renderTrends(container);
       }
     }
     
@@ -1797,10 +1808,30 @@
         avg_price: d.sales_count > 0 ? d.total_value / d.sales_count : 0
       }));
       
+      const periodLabel = trendsDays <= 30 ? `${trendsDays} Days` : 
+                         trendsDays <= 90 ? `${Math.round(trendsDays / 30)} Months` : 
+                         trendsDays <= 365 ? `${Math.round(trendsDays / 30)} Months` : 'All Time';
+      
       container.innerHTML = `
         <div style="padding: 1rem;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-            <h2 style="color: var(--text-primary); font-size: 1.25rem;">📈 Market Trends (Last 30 Days)</h2>
+            <h2 style="color: var(--text-primary); font-size: 1.25rem;">📈 Market Trends (Last ${periodLabel})</h2>
+            <select id="trendsPeriodSelect" onchange="changeTrendsPeriod(parseInt(this.value))" style="
+              background: var(--bg-card);
+              border: 1px solid var(--border);
+              color: var(--text-primary);
+              padding: 0.5rem 1rem;
+              border-radius: 8px;
+              font-family: inherit;
+              font-size: 0.875rem;
+              cursor: pointer;
+            ">
+              <option value="30" ${trendsDays === 30 ? 'selected' : ''}>Last 30 Days</option>
+              <option value="60" ${trendsDays === 60 ? 'selected' : ''}>Last 60 Days</option>
+              <option value="90" ${trendsDays === 90 ? 'selected' : ''}>Last 90 Days</option>
+              <option value="180" ${trendsDays === 180 ? 'selected' : ''}>Last 6 Months</option>
+              <option value="365" ${trendsDays === 365 ? 'selected' : ''}>Last Year</option>
+            </select>
           </div>
           
           <!-- Market, Listing & Last Sale Value Charts -->
@@ -2390,6 +2421,25 @@
         </div>
         
         <!-- Collection Value Charts -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="color: var(--text-primary); font-size: 1.1rem;">📊 Collection Performance</h3>
+          <select id="collectionPeriodSelect" onchange="changeCollectionHistoryPeriod(parseInt(this.value))" style="
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.875rem;
+            cursor: pointer;
+          ">
+            <option value="30" ${collectionHistoryDays === 30 ? 'selected' : ''}>Last 30 Days</option>
+            <option value="60" ${collectionHistoryDays === 60 ? 'selected' : ''}>Last 60 Days</option>
+            <option value="90" ${collectionHistoryDays === 90 ? 'selected' : ''}>Last 90 Days</option>
+            <option value="180" ${collectionHistoryDays === 180 ? 'selected' : ''}>Last 6 Months</option>
+            <option value="365" ${collectionHistoryDays === 365 ? 'selected' : ''}>Last Year</option>
+          </select>
+        </div>
         <div id="collectionChartsContainer" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
           <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
             <h3 style="color: var(--accent-blue); margin-bottom: 1rem; font-size: 1rem;">📈 Collection Value Over Time</h3>
@@ -2477,6 +2527,11 @@
       renderCollectionCharts();
     }
     
+    async function changeCollectionHistoryPeriod(days) {
+      collectionHistoryDays = days;
+      await renderCollectionCharts();
+    }
+    
     // Render collection value/profit charts
     async function renderCollectionCharts() {
       try {
@@ -2504,7 +2559,7 @@
         await fetch('/api/collection/snapshot', { method: 'POST', headers }).catch(() => {});
         
         // Load history
-        const response = await fetch('/api/collection/history?days=30', { headers });
+        const response = await fetch(`/api/collection/history?days=${collectionHistoryDays}`, { headers });
         if (!response.ok) return;
         collectionHistoryData = await response.json();
         
