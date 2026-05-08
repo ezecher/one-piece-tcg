@@ -7,6 +7,7 @@
 import { chromium, Page, BrowserContext } from 'playwright';
 import { REQUEST_DELAY_MS } from '../config.js';
 import { join } from 'path';
+import os from 'os';
 import fs from 'fs';
 
 // Path to store browser session data (keeps you logged in)
@@ -16,8 +17,8 @@ const USER_DATA_DIR = join(process.cwd(), '.browser-data');
 const COOKIES_FILE = join(process.cwd(), 'tcgplayer-cookies.json');
 
 // Path to your actual Chrome profile (for login persistence)
-const CHROME_USER_DATA = '/Users/evanzecher/Library/Application Support/Google/Chrome';
-const CHROME_PROFILE = 'Default';
+const CHROME_USER_DATA = process.env.CHROME_USER_DATA ?? join(os.homedir(), 'Library/Application Support/Google/Chrome');
+const CHROME_PROFILE = process.env.CHROME_PROFILE ?? 'Default';
 
 /**
  * Load saved cookies from file or environment variable

@@ -12,6 +12,11 @@ dist/
 
 # Browser session data (contains login cookies)
 .browser-data/
+tcgplayer-cookies.json
+cookies-base64.txt
+
+# Debug output
+verify-*.txt
 
 # Environment variables
 .env

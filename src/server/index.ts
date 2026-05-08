@@ -164,8 +164,8 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 
 // Admin: List all users (protected by secret key)
 app.get('/api/admin/users', async (req, res) => {
-  const adminKey = req.query.key;
-  if (adminKey !== process.env.DB_UPLOAD_KEY) {
+  const adminKey = req.headers['x-admin-key'];
+  if (typeof adminKey !== 'string' || adminKey !== process.env.DB_UPLOAD_KEY) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   

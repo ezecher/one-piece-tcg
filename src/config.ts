@@ -123,9 +123,6 @@ export const SALES_ENDPOINT_TEMPLATE =
 // Sales endpoint uses POST method
 export const SALES_ENDPOINT_METHOD = 'POST' as const;
 
-// Database file path (use /app/data for Railway persistent storage)
-export const DB_PATH = process.env.DB_PATH || './tcg_sales.db';
-
 // Selectors for scraping (adjust based on actual DOM inspection)
 export const SELECTORS = {
   // Search page selectors
