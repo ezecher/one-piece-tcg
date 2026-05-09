@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — One Piece TCG Tracker</title>
+<style>
+  body { background: #0a0a12; color: #e0e0ec; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 720px; margin: 0 auto; padding: 32px 20px; }
+  h1 { color: #a855f7; border-bottom: 1px solid #1e1e32; padding-bottom: 12px; }
+  h2 { color: #c084fc; margin-top: 32px; }
+  a { color: #a855f7; }
+  code { background: #12121e; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+  ul { padding-left: 20px; }
+  .meta { color: #888; font-size: 0.9em; }
+  .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid #1e1e32; color: #888; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<h1>Privacy Policy</h1>
+<p class="meta">Last updated: 2026-05-09</p>
+
+<p>This Privacy Policy describes how the One Piece TCG Tracker app and its backend service (collectively, the "Service") collect, use, and protect information.</p>
+
+<h2>Information we collect</h2>
+<ul>
+  <li><strong>Account information</strong>: email address, optional display name, and password. Passwords are stored only as bcrypt hashes — we never see or store your plaintext password.</li>
+  <li><strong>Collection and watchlist data</strong>: cards you add to your collection, optional purchase prices you record, watchlist items, optional target prices, and notification preferences.</li>
+  <li><strong>Authentication tokens</strong>: a JWT issued at login, stored on your device via Apple's Keychain (iOS) or browser storage (web).</li>
+  <li><strong>Crash diagnostics</strong>: stack traces, device model, OS version, and app version are sent to Sentry when the app crashes. These reports do not include your email, collection data, or any other personal information.</li>
+</ul>
+
+<h2>What we do not collect</h2>
+<ul>
+  <li>We do not collect your name, address, phone number, payment information, or precise location.</li>
+  <li>We do not use advertising identifiers or analytics tracking.</li>
+  <li>We do not access your contacts, photos, microphone, camera, or other device sensors.</li>
+</ul>
+
+<h2>How we use information</h2>
+<ul>
+  <li>To authenticate you and protect your account.</li>
+  <li>To display the cards in your collection and watchlist.</li>
+  <li>To diagnose crashes and improve app stability.</li>
+</ul>
+
+<h2>Where data is stored</h2>
+<p>All account, collection, and watchlist data is stored in a PostgreSQL database hosted on Railway in the United States. Crash diagnostics are stored by Sentry under their standard data retention.</p>
+
+<h2>Market data</h2>
+<p>The app displays publicly available market data (prices, listings, sales) from <a href="https://www.tcgplayer.com">TCGplayer.com</a>. This data is aggregated by our backend and is not personally identifiable. We do not share your usage of the app with TCGplayer.</p>
+
+<h2>Third parties</h2>
+<ul>
+  <li><strong>Railway</strong> — hosts our backend and database.</li>
+  <li><strong>Sentry</strong> — receives anonymous crash reports.</li>
+  <li><strong>Apple</strong> — distributes the app through the App Store and provides device-level secure storage.</li>
+</ul>
+<p>We do not sell or share your personal information with advertisers, data brokers, or other third parties.</p>
+
+<h2>Your rights</h2>
+<ul>
+  <li><strong>Access</strong> — you can view all data the app stores about you within the app.</li>
+  <li><strong>Account deletion</strong> — open the Profile tab and tap "Delete Account". This permanently removes your account, collection, watchlist, and all associated data from our database. Crash reports already submitted to Sentry are retained for a maximum of 90 days.</li>
+  <li><strong>Email us</strong> for any other requests at <a href="mailto:ezecher724@gmail.com">ezecher724@gmail.com</a>.</li>
+</ul>
+
+<h2>Children</h2>
+<p>The app is rated 4+ and is suitable for all ages. We do not knowingly collect personal information from children under 13. If you believe a child under 13 has provided us with information, contact us and we will delete it.</p>
+
+<h2>Changes</h2>
+<p>If this policy changes materially, we will update the "Last updated" date above. Continued use of the app after changes constitutes acceptance.</p>
+
+<h2>Contact</h2>
+<p><a href="mailto:ezecher724@gmail.com">ezecher724@gmail.com</a></p>
+
+<div class="footer">
+  One Piece TCG Tracker is an unofficial fan-made tool. Not affiliated with Bandai, Toei Animation, or TCGplayer.
+</div>
+</body>
+</html>

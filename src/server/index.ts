@@ -14,6 +14,7 @@ import {
   getPool,
   createUser,
   getUserByEmail,
+  deleteUser,
   getUserCollection,
   addToUserCollection,
   removeFromUserCollection,
@@ -53,6 +54,14 @@ const PORT = process.env.PORT || 3456;
 app.use(cors());
 app.use(express.json());
 app.use(express.static(join(__dirname, 'public')));
+
+// Legal pages — clean URLs for App Store Connect
+app.get('/privacy', (_req, res) => {
+  res.sendFile(join(__dirname, 'public', 'legal', 'privacy.html'));
+});
+app.get('/support', (_req, res) => {
+  res.sendFile(join(__dirname, 'public', 'legal', 'support.html'));
+});
 
 // Initialize PostgreSQL (required - all data now in PostgreSQL)
 if (process.env.DATABASE_URL) {
@@ -160,6 +169,17 @@ app.post('/api/auth/login', async (req, res) => {
 // Get current user
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   res.json({ user: req.user });
+});
+
+// Delete current user account (App Store guideline 5.1.1(v))
+app.delete('/api/auth/me', requireAuth, async (req, res) => {
+  try {
+    await deleteUser(req.userId!);
+    res.status(204).send();
+  } catch (error) {
+    console.error('Delete account error:', error);
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
 });
 
 // Admin: List all users (protected by secret key)

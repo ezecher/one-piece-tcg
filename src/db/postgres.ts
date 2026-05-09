@@ -275,6 +275,23 @@ export async function getUserByEmail(email: string): Promise<User | null> {
   return result.rows[0] || null;
 }
 
+export async function deleteUser(id: number): Promise<void> {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    // scrape_runs.user_id has no ON DELETE rule; null it out to preserve history
+    await client.query('UPDATE scrape_runs SET user_id = NULL WHERE user_id = $1', [id]);
+    // user_collection and user_watchlist cascade automatically
+    await client.query('DELETE FROM users WHERE id = $1', [id]);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function getUserById(id: number): Promise<User | null> {
   const result = await getPool().query<User>(
     'SELECT * FROM users WHERE id = $1',
